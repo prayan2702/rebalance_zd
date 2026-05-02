@@ -154,12 +154,13 @@ for _k, _v in _defaults.items():
         st.session_state[_k] = _v
 
 # ── Kite redirect capture (runs on every load) ───────────────────────────────
-# FIX: pehle token save karo, phir params clear karo, phir ek hi rerun karo.
-# Yahi trailing-slash redirect loop ka fix hai.
+# FIX: st.rerun() bilkul nahi — woh browser-level HTTP redirect loop banata tha.
+# Token process karo, session set karo, params clear karo, aur router naturally
+# stage_upload() call karega. Koi rerun nahi = koi redirect loop nahi.
 _qp = st.query_params
 if "request_token" in _qp:
-    _req = str(_qp["request_token"])          # token pehle capture karo
-    st.query_params.clear()                    # URL saaf karo (no trailing slash loop)
+    _req = str(_qp["request_token"])   # token pehle capture karo
+    st.query_params.clear()            # URL clean karo (no HTTP redirect triggered)
     try:
         _kite = KiteConnect(api_key=API_KEY)
         _sess = _kite.generate_session(_req, api_secret=API_SECRET)
@@ -170,7 +171,7 @@ if "request_token" in _qp:
     except Exception as _e:
         st.session_state.stage        = "login"
         st.session_state["_kite_err"] = str(_e)
-    st.rerun()                                 # ek hi rerun, params clear hone ke baad
+    # NO st.rerun() — router at bottom handles stage automatically
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
