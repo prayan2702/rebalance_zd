@@ -1,6 +1,12 @@
 """
 Zerodha Portfolio Rebalancer — Streamlit App
 ============================================
+Deploy on Streamlit Cloud. Koi server nahi chahiye.
+
+Secrets required (.streamlit/secrets.toml):
+    APP_PIN          = "123456"
+    KITE_API_KEY     = "your_api_key"
+    KITE_API_SECRET  = "your_api_secret"
 """
 
 import math
@@ -148,22 +154,23 @@ for _k, _v in _defaults.items():
         st.session_state[_k] = _v
 
 # ── Kite redirect capture (runs on every load) ───────────────────────────────
+# FIX: pehle token save karo, phir params clear karo, phir ek hi rerun karo.
+# Yahi trailing-slash redirect loop ka fix hai.
 _qp = st.query_params
 if "request_token" in _qp:
-    _req = _qp["request_token"]
+    _req = str(_qp["request_token"])          # token pehle capture karo
+    st.query_params.clear()                    # URL saaf karo (no trailing slash loop)
     try:
         _kite = KiteConnect(api_key=API_KEY)
         _sess = _kite.generate_session(_req, api_secret=API_SECRET)
         _kite.set_access_token(_sess["access_token"])
-        st.session_state.kite  = _kite
-        st.session_state.stage = "upload"
+        st.session_state.kite         = _kite
+        st.session_state.stage        = "upload"
         st.session_state.pin_attempts = 0
-        st.query_params.clear()
-        st.rerun()
     except Exception as _e:
-        st.query_params.clear()
-        st.session_state.stage = "login"
-        st.error(f"Kite login fail hua: {_e}")
+        st.session_state.stage        = "login"
+        st.session_state["_kite_err"] = str(_e)
+    st.rerun()                                 # ek hi rerun, params clear hone ke baad
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -458,6 +465,10 @@ def stage_login():
     <div class="logo">Re<span>balance</span></div>
     <div class="step-pill">Step 1 &nbsp;·&nbsp; Zerodha Login</div>
     """, unsafe_allow_html=True)
+
+    # Kite session error tha to yahan dikhao
+    if "_kite_err" in st.session_state:
+        st.error(f"Kite login fail hua: {st.session_state.pop('_kite_err')}")
 
     st.markdown("""
     <p style="color:#8fa3bc;font-size:13px;line-height:1.7;margin-bottom:1.2rem">
