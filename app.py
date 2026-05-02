@@ -171,25 +171,59 @@ def inr(n: float, decimals: int = 0) -> str:
 
 
 def get_ltp_yfinance(symbols: list) -> dict:
-    """NSE symbols → LTP via yfinance."""
-    ltp_map = {}
+    """
+    NSE symbols → LTP via yfinance.
+    Strategy:
+      1. Batch download period=5d, interval=1d  (most reliable for NSE)
+      2. Individual .history() fallback for zeros
+      3. fast_info.last_price last resort
+    """
+    ltp_map = {s: 0.0 for s in symbols}
     tickers = [f"{s}.NS" for s in symbols]
+
+    # ── Step 1: Batch download ────────────────────────────────────────────────
     try:
-        data = yf.download(tickers, period="1d", interval="1m",
-                           progress=False, threads=True, auto_adjust=True)
-        close = data.get("Close", data)
-        for sym in symbols:
-            col = f"{sym}.NS"
-            try:
-                ltp_map[sym] = float(close[col].dropna().iloc[-1])
-            except Exception:
-                ltp_map[sym] = 0.0
+        data = yf.download(
+            tickers, period="5d", interval="1d",
+            progress=False, auto_adjust=True,
+            threads=True, group_by="ticker"
+        )
+        if not data.empty:
+            for sym, ticker in zip(symbols, tickers):
+                try:
+                    if isinstance(data.columns, pd.MultiIndex):
+                        # group_by="ticker" → (ticker, OHLCV)
+                        series = data[ticker]["Close"].dropna()
+                    else:
+                        series = data["Close"].dropna()
+                    if not series.empty:
+                        ltp_map[sym] = round(float(series.iloc[-1]), 2)
+                except Exception:
+                    pass
     except Exception:
-        for sym in symbols:
-            try:
-                ltp_map[sym] = float(yf.Ticker(f"{sym}.NS").fast_info.last_price or 0)
-            except Exception:
-                ltp_map[sym] = 0.0
+        pass
+
+    # ── Step 2: Individual .history() for zeros ───────────────────────────────
+    missing = [s for s in symbols if ltp_map[s] == 0.0]
+    for sym in missing:
+        try:
+            hist = yf.Ticker(f"{sym}.NS").history(period="5d", interval="1d")
+            if not hist.empty:
+                ltp_map[sym] = round(float(hist["Close"].dropna().iloc[-1]), 2)
+        except Exception:
+            pass
+
+    # ── Step 3: fast_info last resort ─────────────────────────────────────────
+    still_missing = [s for s in symbols if ltp_map[s] == 0.0]
+    for sym in still_missing:
+        try:
+            info = yf.Ticker(f"{sym}.NS").fast_info
+            val  = getattr(info, "last_price", None) or getattr(info, "previous_close", None)
+            if val:
+                ltp_map[sym] = round(float(val), 2)
+        except Exception:
+            pass
+
     return ltp_map
 
 
@@ -587,7 +621,10 @@ def stage_dashboard():
       <div class="ts">Updated: {d['ts']} · LTP via yfinance</div>
     </div>""", unsafe_allow_html=True)
 
-    if st.button("⟳  Prices Refresh Karo"):
+    # Zero LTP warning
+    zero_syms = [r["sym"] for r in d["sell_rows"] + d["buy_rows"] if r["ltp"] == 0.0]
+    if zero_syms:
+        st.warning(f"⚠️ Yeh stocks ka LTP nahi mila (market band ho ya symbol mismatch): **{', '.join(zero_syms)}**")
         with st.spinner("yfinance se fresh prices…"):
             try:
                 hm = {r["sym"]: r["qty"] for r in d["sell_rows"]}
