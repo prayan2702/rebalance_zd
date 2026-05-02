@@ -24,6 +24,12 @@ except ImportError:
     st.error("yfinance install karo: pip install yfinance")
     st.stop()
 
+try:
+    from streamlit_autorefresh import st_autorefresh
+    _AUTOREFRESH_AVAILABLE = True
+except ImportError:
+    _AUTOREFRESH_AVAILABLE = False
+
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Rebalance",
@@ -100,7 +106,8 @@ div[data-testid="stAlert"]     { border-radius: 14px !important; }
 
 # ── Session state ─────────────────────────────────────────────────────────────
 for _k, _v in {
-    "stage": "pin", "sell_syms": [], "buy_syms": [], "data": None, "pin_attempts": 0
+    "stage": "pin", "sell_syms": [], "buy_syms": [], "data": None,
+    "pin_attempts": 0, "auto_refresh": True,
 }.items():
     if _k not in st.session_state:
         st.session_state[_k] = _v
@@ -610,29 +617,64 @@ def stage_dashboard():
         st.rerun()
         return
 
+    # ── Auto-refresh: har 60 sec pe prices update ─────────────────────────────
+    if _AUTOREFRESH_AVAILABLE and st.session_state.auto_refresh:
+        refresh_count = st_autorefresh(interval=60_000, key="price_autorefresh")
+        if refresh_count > 0:
+            try:
+                hm = {r["sym"]: r["qty"] for r in d["sell_rows"]}
+                st.session_state.data = fetch_all(
+                    st.session_state.sell_syms, st.session_state.buy_syms,
+                    hm, d["cash"]
+                )
+                d = st.session_state.data
+            except Exception:
+                pass  # silently fail, purana data dikhta rahe
+
+    ar_on    = st.session_state.auto_refresh
+    ar_label = "🟢 Auto-refresh ON" if ar_on else "⚪ Auto-refresh OFF"
+    ar_icon  = "⏸ Pause" if ar_on else "▶ Resume"
+
     st.markdown(f"""
-    <div style="padding:.8rem 0 .4rem">
+    <div style="padding:.8rem 0 .2rem">
       <div class="logo" style="font-size:20px;padding:.4rem 0 .6rem">Re<span>balance</span></div>
       <div class="strip">
         <div class="s-pill inv"><span class="s-lbl">Investable</span><span class="s-val g">{inr(d['invest'])}</span></div>
         <div class="s-pill buf"><span class="s-lbl">Buffer</span><span class="s-val r">−{inr(d['buf'])}</span></div>
         <div class="s-pill"><span class="s-lbl">Leftover</span><span class="s-val y">{inr(d['leftover'])}</span></div>
       </div>
-      <div class="ts">Updated: {d['ts']} · LTP via yfinance</div>
+      <div class="ts" style="display:flex;align-items:center;gap:8px;margin-top:6px">
+        <span>Updated: {d['ts']}</span>
+        <span style="background:{'rgba(0,214,143,.12)' if ar_on else 'rgba(255,255,255,.06)'};
+              color:{'#00d68f' if ar_on else '#5a6a82'};
+              border:1px solid {'rgba(0,214,143,.3)' if ar_on else 'rgba(255,255,255,.08)'};
+              border-radius:100px;padding:2px 8px;font-size:10px;font-weight:700">
+          {ar_label}
+        </span>
+      </div>
     </div>""", unsafe_allow_html=True)
+
+    # ── Controls: manual refresh + pause/resume ───────────────────────────────
+    col_r, col_p = st.columns([1, 1])
+    with col_r:
+        if st.button("⟳  Abhi Refresh Karo", use_container_width=True):
+            with st.spinner("Prices aa rahe hain…"):
+                try:
+                    hm = {r["sym"]: r["qty"] for r in d["sell_rows"]}
+                    st.session_state.data = fetch_all(
+                        st.session_state.sell_syms, st.session_state.buy_syms, hm, d["cash"])
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"Refresh failed: {exc}")
+    with col_p:
+        if st.button(ar_icon, use_container_width=True, type="secondary"):
+            st.session_state.auto_refresh = not st.session_state.auto_refresh
+            st.rerun()
 
     # Zero LTP warning
     zero_syms = [r["sym"] for r in d["sell_rows"] + d["buy_rows"] if r["ltp"] == 0.0]
     if zero_syms:
-        st.warning(f"⚠️ Yeh stocks ka LTP nahi mila (market band ho ya symbol mismatch): **{', '.join(zero_syms)}**")
-        with st.spinner("yfinance se fresh prices…"):
-            try:
-                hm = {r["sym"]: r["qty"] for r in d["sell_rows"]}
-                st.session_state.data = fetch_all(
-                    st.session_state.sell_syms, st.session_state.buy_syms, hm, d["cash"])
-                st.rerun()
-            except Exception as exc:
-                st.error(f"Refresh failed: {exc}")
+        st.warning(f"⚠️ LTP nahi mila: **{', '.join(zero_syms)}** — market band ho ya symbol mismatch")
 
     st.markdown(f'<div class="sec-title sell">SELL &nbsp;<span style="font-size:14px;color:#5a6a82">{len(d["sell_rows"])} stocks</span></div>',
                 unsafe_allow_html=True)
