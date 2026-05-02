@@ -193,17 +193,43 @@ def get_ltp_yfinance(symbols: list) -> dict:
     return ltp_map
 
 
-def parse_holdings_csv(file) -> dict:
-    """Zerodha holdings CSV → {SYMBOL: qty}"""
-    df = pd.read_csv(file)
-    df.columns = df.columns.str.strip()
-    sym_col = next((c for c in df.columns
-                    if c.lower() in ("instrument", "symbol", "tradingsymbol", "stock")), None)
-    qty_col = next((c for c in df.columns
-                    if "qty" in c.lower() or "quantity" in c.lower()), None)
+def parse_holdings_file(file) -> dict:
+    """
+    Zerodha holdings file → {SYMBOL: qty}
+    Supports CSV aur XLSX dono.
+    XLSX: 'Equity' sheet, header auto-detect, 'Quantity Available' column.
+    """
+    fname = getattr(file, "name", "")
+    ext   = fname.rsplit(".", 1)[-1].lower() if "." in fname else ""
+
+    if ext in ("xlsx", "xls", "xlsm"):
+        raw = pd.read_excel(file, sheet_name="Equity", header=None)
+        header_row = None
+        for idx, row in raw.iterrows():
+            vals = [str(v).strip().lower() for v in row.dropna().values]
+            if "symbol" in vals:
+                header_row = idx
+                break
+        if header_row is None:
+            raise ValueError("'Equity' sheet mein 'Symbol' header row nahi mili.")
+        df = pd.read_excel(file, sheet_name="Equity", header=header_row)
+        df.columns = df.columns.str.strip()
+        sym_col = next((c for c in df.columns if c.lower() == "symbol"), None)
+        qty_col = next((c for c in df.columns if "quantity available" in c.lower()), None)
+        if not qty_col:
+            qty_col = next((c for c in df.columns
+                            if "qty" in c.lower() or "quantity" in c.lower()), None)
+    else:
+        df = pd.read_csv(file)
+        df.columns = df.columns.str.strip()
+        sym_col = next((c for c in df.columns
+                        if c.lower() in ("instrument", "symbol", "tradingsymbol", "stock")), None)
+        qty_col = next((c for c in df.columns
+                        if "qty" in c.lower() or "quantity" in c.lower()), None)
+
     if not sym_col or not qty_col:
         raise ValueError(
-            f"Holdings CSV mein 'Instrument' aur 'Qty.' columns nahi mile.\n"
+            f"Holdings file mein Symbol/Quantity columns nahi mile.\n"
             f"Mili columns: {list(df.columns)}"
         )
     hold_map = {}
@@ -213,7 +239,7 @@ def parse_holdings_csv(file) -> dict:
             qty = int(float(str(row[qty_col]).replace(",", "")))
         except Exception:
             qty = 0
-        if sym and qty > 0:
+        if sym and sym not in ("NAN", "SYMBOL", "") and qty > 0:
             hold_map[sym] = qty
     return hold_map
 
@@ -463,12 +489,12 @@ def stage_upload():
 
     # ② Holdings CSV
     st.markdown("""<div class="info-box" style="margin-top:8px">
-      <b>② Zerodha Holdings CSV</b> —
+      <b>② Zerodha Holdings File</b> —
       <a href="https://console.zerodha.com/portfolio/holdings" target="_blank"
          style="color:#AFA9EC">console.zerodha.com</a>
-      → Holdings → ⬇ Download
+      → Holdings → ⬇ Download (CSV ya XLSX dono chalega)
     </div>""", unsafe_allow_html=True)
-    holdings_file = st.file_uploader("holdings", type=["csv"],
+    holdings_file = st.file_uploader("holdings", type=["csv", "xlsx", "xls"],
                                      label_visibility="collapsed", key="su_holdings")
 
     # ③ Cash
@@ -509,7 +535,7 @@ def stage_upload():
 
     if holdings_file:
         try:
-            hold_map = parse_holdings_csv(holdings_file)
+            hold_map = parse_holdings_file(holdings_file)
             st.markdown(f"<p style='color:#00d68f;font-size:12px;margin:6px 0'>✓ Holdings loaded — {len(hold_map)} stocks</p>",
                         unsafe_allow_html=True)
         except Exception as e:
