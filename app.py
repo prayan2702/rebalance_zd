@@ -1,12 +1,6 @@
 """
 Zerodha Portfolio Rebalancer — Streamlit App
 ============================================
-Deploy on Streamlit Cloud. Koi server nahi chahiye.
-
-Secrets required (.streamlit/secrets.toml):
-    APP_PIN          = "123456"
-    KITE_API_KEY     = "your_api_key"
-    KITE_API_SECRET  = "your_api_secret"
 """
 
 import math
