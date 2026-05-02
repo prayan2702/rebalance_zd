@@ -153,25 +153,8 @@ for _k, _v in _defaults.items():
     if _k not in st.session_state:
         st.session_state[_k] = _v
 
-# ── Kite redirect capture (runs on every load) ───────────────────────────────
-# FIX: st.rerun() bilkul nahi — woh browser-level HTTP redirect loop banata tha.
-# Token process karo, session set karo, params clear karo, aur router naturally
-# stage_upload() call karega. Koi rerun nahi = koi redirect loop nahi.
-_qp = st.query_params
-if "request_token" in _qp:
-    _req = str(_qp["request_token"])   # token pehle capture karo
-    st.query_params.clear()            # URL clean karo (no HTTP redirect triggered)
-    try:
-        _kite = KiteConnect(api_key=API_KEY)
-        _sess = _kite.generate_session(_req, api_secret=API_SECRET)
-        _kite.set_access_token(_sess["access_token"])
-        st.session_state.kite         = _kite
-        st.session_state.stage        = "upload"
-        st.session_state.pin_attempts = 0
-    except Exception as _e:
-        st.session_state.stage        = "login"
-        st.session_state["_kite_err"] = str(_e)
-    # NO st.rerun() — router at bottom handles stage automatically
+# ── No automatic redirect capture — user manually pastes request_token ───────
+# Redirect loop se bachne ke liye auto-capture hataya. Manual entry screen hai.
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -467,22 +450,56 @@ def stage_login():
     <div class="step-pill">Step 1 &nbsp;·&nbsp; Zerodha Login</div>
     """, unsafe_allow_html=True)
 
-    # Kite session error tha to yahan dikhao
     if "_kite_err" in st.session_state:
-        st.error(f"Kite login fail hua: {st.session_state.pop('_kite_err')}")
+        st.error(f"Token invalid ya expired: {st.session_state.pop('_kite_err')}")
 
+    # ── Step 1: Kite login link (new tab mein khulega) ───────────────────────
     st.markdown("""
-    <p style="color:#8fa3bc;font-size:13px;line-height:1.7;margin-bottom:1.2rem">
-    Neeche button tap karo → Zerodha login page khulega →
-    apne credentials se login karo → automatically yahan wapas aa jaayega.
+    <p style="color:#8fa3bc;font-size:13px;line-height:1.8;margin-bottom:.5rem">
+    <b style="color:#dce8f5">Step A</b> — Neeche ka button tap karo.
+    Zerodha login page <b style="color:#dce8f5">naye tab</b> mein khulega.
     </p>
     """, unsafe_allow_html=True)
 
-    # Opens Kite login, Zerodha redirects back with ?request_token=
     st.markdown(
-        f'<a class="login-btn" href="{login_url}" target="_self">🔐 &nbsp;Zerodha se Login Karo</a>',
+        f'<a class="login-btn" href="{login_url}" target="_blank">🔐 &nbsp;Zerodha Login Page Kholo</a>',
         unsafe_allow_html=True,
     )
+
+    # ── Step 2: Token copy karo URL se ───────────────────────────────────────
+    st.markdown("""
+    <p style="color:#8fa3bc;font-size:13px;line-height:1.8;margin-top:1rem;margin-bottom:.5rem">
+    <b style="color:#dce8f5">Step B</b> — Login karne ke baad browser address bar mein
+    URL kuch aisa dikhega:<br>
+    <code style="background:#141b28;padding:4px 8px;border-radius:6px;font-size:11px;color:#ffc94d">
+    https://prayan03.streamlit.app/?request_token=<b>XXXXXXXX</b>&action=login&status=success
+    </code><br>
+    Sirf <b style="color:#ffc94d">request_token</b> ki value copy karo aur neeche paste karo.
+    </p>
+    """, unsafe_allow_html=True)
+
+    token_input = st.text_input(
+        "request_token",
+        placeholder="Token yahan paste karo…",
+        label_visibility="collapsed",
+    )
+
+    if st.button("✅ &nbsp;Connect Karo →"):
+        t = token_input.strip()
+        if not t:
+            st.error("Token empty hai — pehle URL se copy karo.")
+        else:
+            with st.spinner("Zerodha se connect ho raha hai…"):
+                try:
+                    _kite = KiteConnect(api_key=API_KEY)
+                    _sess = _kite.generate_session(t, api_secret=API_SECRET)
+                    _kite.set_access_token(_sess["access_token"])
+                    st.session_state.kite         = _kite
+                    st.session_state.stage        = "upload"
+                    st.session_state.pin_attempts = 0
+                    st.rerun()
+                except Exception as _e:
+                    st.error(f"Token invalid ya expired: {_e}")
 
     st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
 
