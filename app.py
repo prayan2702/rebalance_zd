@@ -423,6 +423,7 @@ st.markdown("""<style>
 for _k, _v in {
     "stage": "pin", "sell_syms": [], "buy_syms": [],
     "data": None, "pin_attempts": 0, "auto_refresh": True,
+    "pin_key": 0,
 }.items():
     if _k not in st.session_state:
         st.session_state[_k] = _v
@@ -624,12 +625,8 @@ def bridge_html(d):
 def stage_pin():
     used = st.session_state.pin_attempts
     err  = st.session_state.pop("_pin_err", "")
-    dots = "".join(
-        f'<span class="att-dot{"  used" if i < used else ""}"></span>'
-        for i in range(5)
-    )
 
-    # Make entire page = navy gradient, center content
+    # ── Full-page navy gradient + PIN input overrides ─────────────────────────
     st.markdown("""
     <style>
     body,
@@ -643,11 +640,9 @@ def stage_pin():
         max-width: 340px !important;
         margin: 0 auto !important;
         padding: 0 16px 40px !important;
-        padding-top: max(80px, 15vh) !important;
+        padding-top: max(72px, 14vh) !important;
     }
-    [data-testid="stVerticalBlock"] { gap: 0.3rem !important; }
-
-    /* PIN text input override for dark bg */
+    [data-testid="stVerticalBlock"] { gap: 0.2rem !important; }
     div[data-testid="stTextInput"] input {
         background: rgba(255,255,255,.08) !important;
         border: 2px solid rgba(255,255,255,.2) !important;
@@ -660,9 +655,11 @@ def stage_pin():
         padding: 18px 20px !important;
         letter-spacing: 14px !important;
         caret-color: #ffca28;
+        transition: border-color .2s, background .2s;
     }
     div[data-testid="stTextInput"] input::placeholder {
-        letter-spacing: 8px; font-size: 18px;
+        letter-spacing: 8px;
+        font-size: 18px;
         color: rgba(255,255,255,.25);
     }
     div[data-testid="stTextInput"] input:focus {
@@ -670,41 +667,26 @@ def stage_pin():
         background: rgba(255,202,40,.1) !important;
         box-shadow: none !important;
     }
-
-    /* Yellow unlock button */
-    div[data-testid="stButton"] button {
-        background: linear-gradient(135deg,#ffca28,#ffa000) !important;
-        color: #1a237e !important;
-        border: none !important;
-        border-radius: 12px !important;
-        font-size: 15px !important;
-        font-weight: 900 !important;
-        padding: 14px !important;
-        min-height: 52px !important;
-        box-shadow: 0 4px 20px rgba(255,202,40,.4);
-        letter-spacing: .3px;
-    }
-    div[data-testid="stButton"] button:hover {
-        transform: translateY(-2px) !important;
-        box-shadow: 0 6px 28px rgba(255,202,40,.55) !important;
-        opacity: 1 !important;
-    }
+    div[data-testid="stButton"] { display: none !important; }
     </style>
     """, unsafe_allow_html=True)
 
+    # ── Locked state ──────────────────────────────────────────────────────────
     if st.session_state.pin_attempts >= 5:
         st.markdown("""
         <div style="text-align:center;padding:20px 0">
           <div style="background:rgba(255,107,107,.15);border:1.5px solid #ff6b6b;
-               border-radius:10px;padding:16px;color:#ff6b6b;font-weight:700;font-size:14px;">
-            🔒 Bahut zyada galat attempts.<br>Page reload karo.
+               border-radius:10px;padding:20px;color:#ff6b6b;
+               font-weight:700;font-size:14px;line-height:1.7;">
+            🔒 Bahut zyada galat attempts.<br>
+            <span style="font-size:12px;opacity:.8;">Page reload karo.</span>
           </div>
         </div>""", unsafe_allow_html=True)
         return
 
-    # Logo + title
+    # ── Logo + titles ─────────────────────────────────────────────────────────
     st.markdown("""
-    <div style="text-align:center;margin-bottom:24px;">
+    <div style="text-align:center;margin-bottom:22px;">
       <div style="font-size:52px;margin-bottom:10px;
            filter:drop-shadow(0 4px 12px rgba(0,0,0,.4));">⚖️</div>
       <div style="color:#fff;font-size:20px;font-weight:800;
@@ -714,44 +696,50 @@ def stage_pin():
     </div>
     """, unsafe_allow_html=True)
 
-    # PIN input
+    # ── PIN input — auto-submits on 6 digits, no button needed ───────────────
     pin = st.text_input(
-        "pin", placeholder="——————", max_chars=6,
-        type="password", label_visibility="collapsed", key="pin_field"
+        "pin",
+        placeholder="——————",
+        max_chars=6,
+        type="password",
+        label_visibility="collapsed",
+        key=f"pin_field_{st.session_state.pin_key}",
     )
 
-    # Hint text
-    st.markdown(
-        '<p style="color:rgba(255,255,255,.3);font-size:11px;'
-        'text-align:center;margin:4px 0 12px;">Type on keyboard or use phone keypad</p>',
-        unsafe_allow_html=True
+    # ── Hint + attempt dots + error msg ──────────────────────────────────────
+    dots = "".join(
+        f'<span class="att-dot{" used" if i < used else ""}"></span>'
+        for i in range(5)
     )
+    st.markdown(f"""
+    <p style="color:rgba(255,255,255,.3);font-size:11px;
+       text-align:center;margin:6px 0 4px;">
+       Type on keyboard or use phone keypad</p>
+    <div class="att-row" style="margin:8px 0 4px;">{dots}</div>
+    <div style="color:#ff6b6b;font-size:12.5px;font-weight:700;
+         text-align:center;min-height:20px;letter-spacing:.2px;">{err}</div>
+    <div style="color:rgba(255,255,255,.18);font-size:10px;
+         text-align:center;margin-top:28px;letter-spacing:.3px;">
+      prayan03.streamlit.app · Personal use only
+    </div>
+    """, unsafe_allow_html=True)
 
-    # Unlock button
-    if st.button("Unlock →", use_container_width=True, key="pin_submit"):
+    # ── Auto-verify on 6 digits ───────────────────────────────────────────────
+    if len(pin) == 6:
         if pin == APP_PIN:
-            st.session_state.stage = "upload"
+            st.session_state.stage        = "upload"
             st.session_state.pin_attempts = 0
+            st.session_state.pin_key     += 1
             st.rerun()
         else:
             st.session_state.pin_attempts += 1
+            st.session_state.pin_key     += 1   # clears the input box
             remaining = 5 - st.session_state.pin_attempts
             st.session_state["_pin_err"] = (
                 f"❌ Galat PIN — {remaining} attempts baaki" if remaining > 0
                 else "🔒 Locked — page reload karo"
             )
             st.rerun()
-
-    # Attempt dots + error
-    st.markdown(f"""
-    <div class="att-row" style="margin-top:12px;">{dots}</div>
-    <div style="color:#ff6b6b;font-size:12.5px;font-weight:700;
-         text-align:center;min-height:20px;margin-top:6px;">{err}</div>
-    <div style="color:rgba(255,255,255,.18);font-size:10px;
-         text-align:center;margin-top:28px;letter-spacing:.3px;">
-      prayan03.streamlit.app · Personal use only
-    </div>
-    """, unsafe_allow_html=True)
 
 
 # ╔══════════════════════════════════════════════════════════════════════════════╗
