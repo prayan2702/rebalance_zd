@@ -328,15 +328,21 @@ st.markdown("""<style>
 .c-g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .c-box { background: #ffffff; border-radius: 6px; padding: 8px 10px;
          border: 1px solid #e4e8ef; }
-.c-lbl { display: block; font-size: 7.5px; font-weight: 700; letter-spacing: .7px;
+.c-lbl { display: block; font-size: 9px; font-weight: 700; letter-spacing: .7px;
          text-transform: uppercase; color: #9aa0ad; margin-bottom: 3px; }
 .c-num { display: block; font-family: 'Courier New', monospace;
          font-size: 13px; font-weight: 700; color: #1a1f2e; word-break: break-all; }
 .c-num.sell { color: #c62828; font-size: 22px; }
 .c-num.buy  { color: #2e7d32; font-size: 22px; }
 .c-num.sm   { font-size: 11.5px; }
-.c-chg { font-size: 10px; color: #9aa0ad; margin-top: 8px;
-         font-family: 'Courier New', monospace; }
+.c-chg { font-size: 11.5px; color: #4a5568; margin-top: 8px;
+         font-family: 'Courier New', monospace;
+         background: rgba(0,0,0,0.05); border-radius: 5px;
+         padding: 5px 8px; font-weight: 600;
+         border-left: 3px solid #9aa0ad; }
+
+.card-sell .c-chg { border-left-color: #e57373; background: rgba(198,40,40,0.06); color: #5a3535; }
+.card-buy  .c-chg { border-left-color: #81c784; background: rgba(46,125,50,0.06); color: #2d4a2d; }
 
 /* ── BRIDGE ── */
 .bridge {
