@@ -41,10 +41,12 @@ except Exception:
     st.stop()
 
 # ── Constants ─────────────────────────────────────────────────────────────────
-STT_SELL  = 0.001
-EXC_CH    = 0.0003
-GST_RATE  = 0.18
-STAMP_BUY = 0.00015
+# Zerodha Equity Delivery Charges (exact as per Zerodha calculator)
+STT_RATE  = 0.001       # 0.1% on BUY & SELL both
+TXN_NSE   = 0.0000307   # NSE 0.00307% transaction charge
+SEBI_CH   = 0.000001    # SEBI ₹10/crore = 0.0001%
+GST_RATE  = 0.18        # 18% on (TXN + SEBI), brokerage = ₹0
+STAMP_BUY = 0.00015     # 0.015% buy side only
 BUF_PCT   = 0.006
 
 # ── Global CSS — matching rebalancer HTML app design system ───────────────────
@@ -160,15 +162,40 @@ div[data-testid="stButton"] button[kind="secondary"]:hover {
     box-shadow: 0 6px 28px rgba(255,202,40,.55) !important;
 }
 
-/* File uploader */
+/* File uploader — force light theme on all devices/dark-mode */
 [data-testid="stFileUploader"] {
-    background: #fff;
-    border: 2px dashed #e4e8ef;
-    border-radius: 8px;
-    padding: .8rem 1rem;
+    background: #ffffff !important;
+    border: 2px dashed #e4e8ef !important;
+    border-radius: 8px !important;
+    padding: .8rem 1rem !important;
+    color-scheme: light !important;
 }
-[data-testid="stFileUploader"]:hover { border-color: #1565c0; }
+[data-testid="stFileUploader"]:hover { border-color: #1565c0 !important; }
 [data-testid="stFileUploader"] label { display: none !important; }
+[data-testid="stFileUploader"] section,
+[data-testid="stFileUploader"] section > div,
+[data-testid="stFileUploadDropzone"] {
+    background: #ffffff !important;
+    color: #1a1f2e !important;
+}
+[data-testid="stFileUploadDropzone"] button {
+    background: #e8eaf6 !important;
+    color: #1a237e !important;
+    border-color: #9fa8da !important;
+}
+[data-testid="stFileUploader"] span,
+[data-testid="stFileUploader"] small,
+[data-testid="stFileUploader"] p {
+    color: #5a6478 !important;
+}
+/* Uploaded file chip */
+[data-testid="stFileUploaderDeleteBtn"],
+[data-testid="stUploadedFileData"] {
+    background: #f0f2f5 !important;
+    color: #1a1f2e !important;
+}
+[data-testid="stUploadedFileName"] { color: #1a1f2e !important; }
+[data-testid="stUploadedFileSize"] { color: #5a6478 !important; }
 
 /* Spinner */
 div[data-testid="stSpinner"] p { color: #5a6478 !important; }
@@ -530,16 +557,16 @@ def fetch_all(sell_syms, buy_syms, hold_map, cash):
         ltp   = ltp_map.get(sym, 0.0)
         qty   = hold_map.get(sym, 0)
         gross = qty * ltp
-        stt   = gross * STT_SELL
-        exc   = gross * EXC_CH
-        brk   = min(20, gross * 0.0003)
-        gst   = brk * GST_RATE
-        tc    = stt + exc + brk + gst
+        stt   = gross * STT_RATE             # 0.1% on sell
+        txn   = gross * TXN_NSE              # NSE 0.00307%
+        sebi  = gross * SEBI_CH              # ₹10/crore
+        gst   = (txn + sebi) * GST_RATE      # 18% on txn+sebi (brk=0)
+        tc    = stt + txn + sebi + gst
         net   = gross - tc
         gross_tot  += gross
         charge_tot += tc
         sell_rows.append({"sym": sym, "ltp": ltp, "qty": qty, "gross": gross,
-                          "stt": stt, "exc": exc, "brk": brk, "gst": gst,
+                          "stt": stt, "txn": txn, "sebi": sebi, "gst": gst,
                           "total_charges": tc, "net": net, "held": qty > 0})
     sell_net = gross_tot - charge_tot
     pool     = sell_net + cash
@@ -552,11 +579,16 @@ def fetch_all(sell_syms, buy_syms, hold_map, cash):
         ltp       = ltp_map.get(sym, 0.0)
         qty       = math.floor(per_stk / ltp) if ltp > 0 else 0
         cost      = qty * ltp
-        charges_b = (cost * EXC_CH + cost * STAMP_BUY +
-                     min(20, cost * 0.0003) * (1 + GST_RATE))
+        stt_b     = cost * STT_RATE              # 0.1% on buy
+        txn_b     = cost * TXN_NSE               # NSE 0.00307%
+        sebi_b    = cost * SEBI_CH               # ₹10/crore
+        stamp_b   = cost * STAMP_BUY             # 0.015% buy only
+        gst_b     = (txn_b + sebi_b) * GST_RATE  # 18% on txn+sebi
+        charges_b = stt_b + txn_b + sebi_b + stamp_b + gst_b
         buy_cost += cost + charges_b
-        buy_rows.append({"sym": sym, "ltp": ltp, "qty": qty,
-                         "cost": cost, "charges": charges_b})
+        buy_rows.append({"sym": sym, "ltp": ltp, "qty": qty, "cost": cost,
+                         "stt": stt_b, "txn": txn_b, "sebi": sebi_b,
+                         "stamp": stamp_b, "gst": gst_b, "charges": charges_b})
     return {
         "ts": datetime.now().strftime("%d %b %Y, %I:%M %p"),
         "sell_rows": sell_rows, "buy_rows": buy_rows,
@@ -586,7 +618,7 @@ def sell_card(r):
     <div class="c-box"><span class="c-lbl">Net (after charges)</span>
       <span class="c-num sm">{inr(r['net'])}</span></div>
   </div>
-  <div class="c-chg">STT {inr(r['stt'],2)} · Exchange {inr(r['exc'],2)} · Brokerage+GST {inr(r['brk']+r['gst'],2)}</div>
+  <div class="c-chg">STT {inr(r['stt'],2)} · Txn {inr(r['txn'],2)} · SEBI {inr(r['sebi'],2)} · GST {inr(r['gst'],2)}</div>
 </div>"""
 
 
@@ -599,10 +631,10 @@ def buy_card(r):
   <div class="c-g2">
     <div class="c-box"><span class="c-lbl">Buy Qty</span>
       <span class="c-num buy">{r['qty']}</span></div>
-    <div class="c-box"><span class="c-lbl">Total Cost (w/ charges)</span>
+    <div class="c-box"><span class="c-lbl">Total Cost (incl. charges)</span>
       <span class="c-num sm">{inr(r['cost']+r['charges'])}</span></div>
   </div>
-  <div class="c-chg">Base: {inr(r['cost'])} · Charges: {inr(r['charges'],2)}</div>
+  <div class="c-chg">Base {inr(r['cost'])} · STT {inr(r['stt'],2)} · Txn {inr(r['txn'],2)} · Stamp {inr(r['stamp'],2)} · GST {inr(r['gst'],2)}</div>
 </div>"""
 
 
@@ -629,45 +661,90 @@ def stage_pin():
     # ── Full-page navy gradient + PIN input overrides ─────────────────────────
     st.markdown("""
     <style>
+    /* Full-screen navy gradient */
+    body,
+    .stApp,
+    [data-testid="stAppViewContainer"],
+    [data-testid="stMain"],
+    [data-testid="stAppViewContainer"] > div,
+    section[data-testid="stSidebar"] { display: none !important; }
+
     body,
     .stApp,
     [data-testid="stAppViewContainer"],
     [data-testid="stMain"] {
         background: linear-gradient(135deg,#0a0e2e 0%,#1a237e 55%,#1565c0 100%) !important;
+        background-attachment: fixed !important;
         min-height: 100vh !important;
+        min-height: -webkit-fill-available !important;
     }
+    [data-testid="stMain"] > div,
+    [data-testid="stMain"] .block-container,
     .main .block-container {
+        background: transparent !important;
         max-width: 340px !important;
         margin: 0 auto !important;
         padding: 0 16px 40px !important;
         padding-top: max(72px, 14vh) !important;
     }
     [data-testid="stVerticalBlock"] { gap: 0.2rem !important; }
-    div[data-testid="stTextInput"] input {
-        background: rgba(255,255,255,.08) !important;
-        border: 2px solid rgba(255,255,255,.2) !important;
+
+    /* PIN input — high specificity + iOS override */
+    .stApp div[data-testid="stTextInput"] input,
+    [data-testid="stMain"] div[data-testid="stTextInput"] input,
+    .block-container div[data-testid="stTextInput"] input {
+        -webkit-appearance: none !important;
+        appearance: none !important;
+        background: rgba(15,25,80,0.55) !important;
+        background-color: rgba(15,25,80,0.55) !important;
+        border: 2px solid rgba(255,255,255,.22) !important;
         border-radius: 14px !important;
         color: #fff !important;
+        -webkit-text-fill-color: #fff !important;
         font-size: 28px !important;
         font-family: 'Courier New', monospace !important;
         font-weight: 800 !important;
         text-align: center !important;
         padding: 18px 20px !important;
         letter-spacing: 14px !important;
-        caret-color: #ffca28;
+        caret-color: #ffca28 !important;
         transition: border-color .2s, background .2s;
-    }
-    div[data-testid="stTextInput"] input::placeholder {
-        letter-spacing: 8px;
-        font-size: 18px;
-        color: rgba(255,255,255,.25);
-    }
-    div[data-testid="stTextInput"] input:focus {
-        border-color: #ffca28 !important;
-        background: rgba(255,202,40,.1) !important;
         box-shadow: none !important;
     }
+    .stApp div[data-testid="stTextInput"] input::placeholder,
+    [data-testid="stMain"] div[data-testid="stTextInput"] input::placeholder {
+        letter-spacing: 8px !important;
+        font-size: 18px !important;
+        color: rgba(255,255,255,.3) !important;
+        -webkit-text-fill-color: rgba(255,255,255,.3) !important;
+    }
+    .stApp div[data-testid="stTextInput"] input:focus,
+    [data-testid="stMain"] div[data-testid="stTextInput"] input:focus {
+        border-color: #ffca28 !important;
+        background: rgba(255,202,40,.12) !important;
+        background-color: rgba(255,202,40,.12) !important;
+        box-shadow: 0 0 0 3px rgba(255,202,40,.18) !important;
+        outline: none !important;
+    }
+    /* iOS autofill color fix */
+    input:-webkit-autofill,
+    input:-webkit-autofill:focus {
+        -webkit-box-shadow: 0 0 0 1000px #0f1950 inset !important;
+        -webkit-text-fill-color: #fff !important;
+    }
+    /* Hide eye icon & label */
+    [data-testid="stTextInput"] [data-testid="InputInstructions"],
+    [data-testid="stTextInput"] label { display: none !important; }
     div[data-testid="stButton"] { display: none !important; }
+
+    /* Password show/hide toggle — restyle for dark bg */
+    [data-testid="textInputRootElement"] button,
+    div[data-testid="stTextInput"] button {
+        background: transparent !important;
+        border: none !important;
+        color: rgba(255,255,255,.45) !important;
+        display: flex !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -1032,8 +1109,8 @@ def stage_dashboard():
     # ── Footer ────────────────────────────────────────────────────────────────
     st.markdown("""
     <div class="ftxt">
-      Charges: STT 0.1% sell · Exchange ~0.03% · Brokerage ₹20/order + 18% GST<br>
-      Buy: Stamp duty 0.015% · Buffer 0.6% · LTP: yfinance (NSE) · Estimates only
+      Zerodha Delivery: Zero Brokerage · STT 0.1% B&amp;S · Txn 0.00307% · SEBI ₹10/cr · GST 18%<br>
+      Buy: Stamp 0.015% · Buffer 0.6% · LTP: yfinance (NSE) · Estimates only
     </div>
     """, unsafe_allow_html=True)
 
