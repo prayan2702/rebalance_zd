@@ -661,25 +661,15 @@ def stage_pin():
     # ── Full-page navy gradient + PIN input overrides ─────────────────────────
     st.markdown("""
     <style>
-    /* Full-screen navy gradient */
-    body,
-    .stApp,
-    [data-testid="stAppViewContainer"],
-    [data-testid="stMain"],
-    [data-testid="stAppViewContainer"] > div,
-    section[data-testid="stSidebar"] { display: none !important; }
-
+    /* ── PIN page: full-screen navy gradient ── */
     body,
     .stApp,
     [data-testid="stAppViewContainer"],
     [data-testid="stMain"] {
         background: linear-gradient(135deg,#0a0e2e 0%,#1a237e 55%,#1565c0 100%) !important;
-        background-attachment: fixed !important;
         min-height: 100vh !important;
         min-height: -webkit-fill-available !important;
     }
-    [data-testid="stMain"] > div,
-    [data-testid="stMain"] .block-container,
     .main .block-container {
         background: transparent !important;
         max-width: 340px !important;
@@ -689,14 +679,13 @@ def stage_pin():
     }
     [data-testid="stVerticalBlock"] { gap: 0.2rem !important; }
 
-    /* PIN input — high specificity + iOS override */
+    /* PIN input — high specificity + iOS fix */
     .stApp div[data-testid="stTextInput"] input,
-    [data-testid="stMain"] div[data-testid="stTextInput"] input,
-    .block-container div[data-testid="stTextInput"] input {
+    .main div[data-testid="stTextInput"] input {
         -webkit-appearance: none !important;
         appearance: none !important;
-        background: rgba(15,25,80,0.55) !important;
-        background-color: rgba(15,25,80,0.55) !important;
+        background: rgba(15,25,80,0.6) !important;
+        background-color: rgba(15,25,80,0.6) !important;
         border: 2px solid rgba(255,255,255,.22) !important;
         border-radius: 14px !important;
         color: #fff !important;
@@ -708,42 +697,42 @@ def stage_pin():
         padding: 18px 20px !important;
         letter-spacing: 14px !important;
         caret-color: #ffca28 !important;
-        transition: border-color .2s, background .2s;
         box-shadow: none !important;
+        transition: border-color .2s, background .2s;
     }
     .stApp div[data-testid="stTextInput"] input::placeholder,
-    [data-testid="stMain"] div[data-testid="stTextInput"] input::placeholder {
+    .main div[data-testid="stTextInput"] input::placeholder {
         letter-spacing: 8px !important;
         font-size: 18px !important;
         color: rgba(255,255,255,.3) !important;
         -webkit-text-fill-color: rgba(255,255,255,.3) !important;
     }
     .stApp div[data-testid="stTextInput"] input:focus,
-    [data-testid="stMain"] div[data-testid="stTextInput"] input:focus {
+    .main div[data-testid="stTextInput"] input:focus {
         border-color: #ffca28 !important;
-        background: rgba(255,202,40,.12) !important;
         background-color: rgba(255,202,40,.12) !important;
         box-shadow: 0 0 0 3px rgba(255,202,40,.18) !important;
         outline: none !important;
     }
-    /* iOS autofill color fix */
+    /* iOS autofill override */
     input:-webkit-autofill,
+    input:-webkit-autofill:hover,
     input:-webkit-autofill:focus {
         -webkit-box-shadow: 0 0 0 1000px #0f1950 inset !important;
         -webkit-text-fill-color: #fff !important;
     }
-    /* Hide eye icon & label */
-    [data-testid="stTextInput"] [data-testid="InputInstructions"],
-    [data-testid="stTextInput"] label { display: none !important; }
+    /* Hide label, instructions */
+    [data-testid="stTextInput"] label,
+    [data-testid="stTextInput"] [data-testid="InputInstructions"] {
+        display: none !important;
+    }
+    /* Hide button (auto-submit, no button needed) */
     div[data-testid="stButton"] { display: none !important; }
-
-    /* Password show/hide toggle — restyle for dark bg */
-    [data-testid="textInputRootElement"] button,
+    /* Show/hide password icon — visible on dark bg */
     div[data-testid="stTextInput"] button {
         background: transparent !important;
         border: none !important;
-        color: rgba(255,255,255,.45) !important;
-        display: flex !important;
+        color: rgba(255,255,255,.5) !important;
     }
     </style>
     """, unsafe_allow_html=True)
