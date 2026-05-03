@@ -1,12 +1,6 @@
 """
 Zerodha Portfolio Rebalancer — Streamlit App (No Kite API)
-==========================================================
-Kite API permissions ki zaroorat nahi.
-Data sources:
-  • Screener Excel   → sell / buy lists
-  • Zerodha Holdings CSV (console.zerodha.com se download)  → qty
-  • yfinance         → live LTP (NSE)
-  • Manual input     → available cash
+UI matches the Google Apps Script Portfolio Rebalancer design system.
 
 Secrets required (.streamlit/secrets.toml):
     APP_PIN = "123456"
@@ -32,8 +26,8 @@ except ImportError:
 
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Rebalance",
-    page_icon="📊",
+    page_title="Portfolio Rebalancer",
+    page_icon="⚖️",
     layout="centered",
     initial_sidebar_state="collapsed",
 )
@@ -53,121 +47,385 @@ GST_RATE  = 0.18
 STAMP_BUY = 0.00015
 BUF_PCT   = 0.006
 
-# ── CSS ───────────────────────────────────────────────────────────────────────
+# ── Global CSS — matching rebalancer HTML app design system ───────────────────
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=IBM+Plex+Mono:wght@400;600&family=DM+Sans:wght@400;500;600&display=swap');
-
+/* ── Reset & base ── */
 #MainMenu, footer, header,
 [data-testid="stToolbar"],[data-testid="stDecoration"],
 [data-testid="stStatusWidget"],[data-testid="collapsedControl"],
 [data-testid="stSidebarNav"] { display: none !important; }
 
-.stApp,[data-testid="stAppViewContainer"],
-[data-testid="stMain"],[data-testid="stBottom"] { background: #080c14 !important; }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-.main .block-container { padding: 0 1rem 4rem !important; max-width: 500px; margin: 0 auto; }
-[data-testid="stVerticalBlock"] { gap: 0.4rem !important; }
-*, body { font-family: 'DM Sans', system-ui, sans-serif; color: #dce8f5; }
+body, .stApp,
+[data-testid="stAppViewContainer"],
+[data-testid="stMain"] {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif !important;
+    font-size: 13px;
+    background: #f0f2f5 !important;
+    color: #1a1f2e !important;
+}
 
+.main .block-container {
+    padding: 0 0 4rem !important;
+    max-width: 540px;
+    margin: 0 auto;
+}
+[data-testid="stVerticalBlock"] { gap: 0.35rem !important; }
+
+/* ── Streamlit widget overrides ── */
+/* All inputs */
 div[data-testid="stTextInput"] input,
 div[data-testid="stNumberInput"] input {
-    background: #0e1420 !important; border: 1.5px solid rgba(255,255,255,0.1) !important;
-    border-radius: 14px !important; color: #dce8f5 !important; font-size: 28px !important;
-    font-family: 'IBM Plex Mono', monospace !important; text-align: center !important;
-    padding: 18px 16px !important; letter-spacing: 10px;
+    background: #ffffff !important;
+    border: 1.5px solid #e4e8ef !important;
+    border-radius: 6px !important;
+    color: #1a1f2e !important;
+    font-size: 13px !important;
+    font-family: 'Segoe UI', system-ui, sans-serif !important;
+    font-weight: 700 !important;
+    text-align: right !important;
+    padding: 8px 10px !important;
+    letter-spacing: 0 !important;
 }
-div[data-testid="stTextInput"] input:focus {
-    border-color: #ffc94d !important; box-shadow: 0 0 0 3px rgba(255,201,77,0.15) !important;
+div[data-testid="stTextInput"] input:focus,
+div[data-testid="stNumberInput"] input:focus {
+    border-color: #1565c0 !important;
+    box-shadow: 0 0 0 2px rgba(21,101,192,0.12) !important;
+    outline: none !important;
 }
-div[data-testid="stTextInput"] label { display: none !important; }
+div[data-testid="stTextInput"] label,
+div[data-testid="stNumberInput"] label { display: none !important; }
 
+/* PIN input special */
+.pin-input-wrap div[data-testid="stTextInput"] input {
+    font-size: 28px !important;
+    letter-spacing: 14px !important;
+    text-align: center !important;
+    background: rgba(255,255,255,.08) !important;
+    border: 2px solid rgba(255,255,255,.2) !important;
+    border-radius: 14px !important;
+    color: #fff !important;
+    padding: 18px 20px !important;
+    font-family: 'Courier New', monospace !important;
+}
+.pin-input-wrap div[data-testid="stTextInput"] input:focus {
+    border-color: #ffca28 !important;
+    background: rgba(255,202,40,.1) !important;
+    box-shadow: none !important;
+}
+
+/* Primary buttons */
 div[data-testid="stButton"] button {
-    width: 100%; background: #534AB7 !important; color: #fff !important;
-    border: none !important; border-radius: 14px !important; font-size: 15px !important;
-    font-weight: 700 !important; font-family: 'Syne', sans-serif !important;
-    padding: 16px !important; transition: all 0.2s !important; min-height: 54px;
+    width: 100%;
+    background: #1a237e !important;
+    color: #fff !important;
+    border: none !important;
+    border-radius: 6px !important;
+    font-size: 13px !important;
+    font-weight: 700 !important;
+    font-family: 'Segoe UI', system-ui, sans-serif !important;
+    padding: 10px 16px !important;
+    transition: all 0.15s !important;
+    min-height: 40px;
+    letter-spacing: 0.2px;
 }
-div[data-testid="stButton"] button:hover  { background: #7F77DD !important; }
-div[data-testid="stButton"] button:active { transform: scale(0.98) !important; }
+div[data-testid="stButton"] button:hover  { opacity: .88 !important; transform: translateY(-1px) !important; }
+div[data-testid="stButton"] button:active { transform: translateY(0) !important; }
 div[data-testid="stButton"] button[kind="secondary"] {
-    background: #141b28 !important; border: 1px solid rgba(255,255,255,0.1) !important;
-    color: #8fa3bc !important; font-size: 13px !important; min-height: 44px;
+    background: #ffffff !important;
+    border: 1.5px solid #e4e8ef !important;
+    color: #5a6478 !important;
 }
+div[data-testid="stButton"] button[kind="secondary"]:hover {
+    background: #f8f9fb !important;
+    opacity: 1 !important;
+}
+
+/* PIN unlock button (yellow) */
+.pin-btn-wrap div[data-testid="stButton"] button {
+    background: linear-gradient(135deg, #ffca28, #ffa000) !important;
+    color: #1a237e !important;
+    border-radius: 12px !important;
+    font-size: 15px !important;
+    font-weight: 900 !important;
+    padding: 14px !important;
+    min-height: 52px;
+    box-shadow: 0 4px 20px rgba(255,202,40,.4);
+}
+.pin-btn-wrap div[data-testid="stButton"] button:hover {
+    transform: translateY(-2px) !important;
+    opacity: 1 !important;
+    box-shadow: 0 6px 28px rgba(255,202,40,.55) !important;
+}
+
+/* File uploader */
 [data-testid="stFileUploader"] {
-    background: #0e1420; border: 2px dashed rgba(255,255,255,0.1);
-    border-radius: 16px; padding: 1rem 1.5rem;
+    background: #fff;
+    border: 2px dashed #e4e8ef;
+    border-radius: 8px;
+    padding: .8rem 1rem;
 }
-[data-testid="stFileUploader"]:hover { border-color: rgba(83,74,183,0.5); }
-div[data-testid="stSpinner"] p { color: #8fa3bc !important; }
-div[data-testid="stAlert"]     { border-radius: 14px !important; }
+[data-testid="stFileUploader"]:hover { border-color: #1565c0; }
+[data-testid="stFileUploader"] label { display: none !important; }
+
+/* Spinner */
+div[data-testid="stSpinner"] p { color: #5a6478 !important; }
+
+/* Alerts */
+div[data-testid="stAlert"] { border-radius: 8px !important; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #e4e8ef; border-radius: 3px; }
 </style>
 """, unsafe_allow_html=True)
 
+# ── Component CSS (cards, panels) ─────────────────────────────────────────────
+st.markdown("""<style>
+/* ── PIN OVERLAY ── */
+.pin-overlay {
+    position: fixed; inset: 0; z-index: 9000;
+    background: linear-gradient(135deg, #0a0e2e 0%, #1a237e 55%, #1565c0 100%);
+    display: flex; align-items: center; justify-content: center;
+    flex-direction: column; padding: 1rem;
+    min-height: 100vh;
+}
+.pin-box { text-align: center; width: 100%; max-width: 340px; }
+.pin-logo { font-size: 48px; margin-bottom: 10px; filter: drop-shadow(0 4px 12px rgba(0,0,0,.4)); }
+.pin-title { color: #fff; font-size: 20px; font-weight: 800; margin-bottom: 4px; letter-spacing: .3px; }
+.pin-subtitle { color: rgba(255,255,255,.5); font-size: 12px; margin-bottom: 24px; }
+.pin-hint { color: rgba(255,255,255,.35); font-size: 11px; margin: 8px 0 16px; }
+.pin-error-box { color: #ff6b6b; font-size: 12.5px; font-weight: 700;
+                 min-height: 20px; margin-top: 10px; letter-spacing: .2px; }
+.pin-footer { font-size: 10px; color: rgba(255,255,255,.2);
+              margin-top: 28px; letter-spacing: .3px; }
+
+/* Attempt dots */
+.att-row { display: flex; justify-content: center; gap: 7px; margin: 12px 0 4px; }
+.att-dot { width: 8px; height: 8px; border-radius: 50%;
+           background: rgba(255,255,255,.15); display: inline-block; }
+.att-dot.used { background: #ff6b6b; }
+
+/* ── HEADER BAR ── */
+.rb-header {
+    height: 52px;
+    background: linear-gradient(135deg, #1a237e, #283593);
+    color: #fff;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 14px;
+    position: sticky; top: 0; z-index: 100;
+    box-shadow: 0 2px 8px rgba(0,0,0,.25);
+    margin-bottom: 0;
+}
+.rb-header-title {
+    font-size: 15px; font-weight: 700;
+    display: flex; align-items: center; gap: 8px;
+}
+.rb-header-right { display: flex; align-items: center; gap: 8px; }
+.ar-badge {
+    font-size: 10.5px; font-weight: 800; border-radius: 14px;
+    padding: 3px 10px; border: 1.5px solid; white-space: nowrap;
+}
+.ar-badge.on  { background: rgba(46,125,50,.2); border-color: #a5d6a7; color: #a5d6a7; }
+.ar-badge.off { background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.2); color: rgba(255,255,255,.5); }
+.ts-badge { font-size: 10px; color: rgba(255,255,255,.5); white-space: nowrap; }
+
+/* ── SUMMARY STRIP ── */
+.sum-strip {
+    display: grid; grid-template-columns: 1fr 1fr 1fr;
+    gap: 6px; padding: 8px 12px;
+    background: linear-gradient(90deg, #1a237e, #283593);
+}
+.sum-pill {
+    background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.15);
+    border-radius: 8px; padding: 8px 10px; text-align: center;
+}
+.sum-pill.inv { border-color: rgba(165,214,167,.4); background: rgba(46,125,50,.2); }
+.sum-pill.buf { border-color: rgba(239,154,154,.3); background: rgba(198,40,40,.15); }
+.sum-pill.lft { border-color: rgba(255,202,40,.3); background: rgba(255,143,0,.15); }
+.sum-lbl { display: block; font-size: 8px; font-weight: 700; letter-spacing: .7px;
+           text-transform: uppercase; color: rgba(255,255,255,.55); margin-bottom: 3px; }
+.sum-val { display: block; font-size: 13px; font-weight: 800; font-family: 'Courier New', monospace; }
+.sum-val.g { color: #81c784; }
+.sum-val.r { color: #ef9a9a; }
+.sum-val.y { color: #ffca28; }
+
+/* ── PANEL / SECTION ── */
+.panel {
+    background: #ffffff; border-radius: 10px;
+    box-shadow: 0 2px 12px rgba(0,0,0,.08);
+    border: 1px solid #e4e8ef;
+    margin: 8px 10px; overflow: hidden;
+}
+.panel-hdr {
+    padding: 8px 12px; font-weight: 700; font-size: 11.5px;
+    text-transform: uppercase; letter-spacing: .5px;
+    display: flex; justify-content: space-between; align-items: center;
+    border-bottom: 2px solid;
+}
+.ph-sell { background: #ffebee; color: #c62828; border-color: #ef9a9a; }
+.ph-buy  { background: #e8f5e9; color: #2e7d32; border-color: #a5d6a7; }
+.ph-info { background: #e3f2fd; color: #1565c0; border-color: #90caf9; }
+.ph-amb  { background: #fffde7; color: #e65100; border-color: #ffe082; }
+.ph-navy { background: #e8eaf6; color: #1a237e; border-bottom-color: #9fa8da; }
+
+/* ── STOCK CARDS ── */
+.card {
+    border-radius: 8px; padding: 12px 14px;
+    margin-bottom: 8px; border: 1.5px solid;
+}
+.card-sell { background: #ffebee; border-color: #ef9a9a; }
+.card-buy  { background: #e8f5e9; border-color: #a5d6a7; }
+.card.dim  { opacity: .45; }
+.c-top {
+    display: flex; align-items: center; flex-wrap: wrap;
+    justify-content: space-between; gap: 6px; margin-bottom: 10px;
+}
+.c-sym { font-size: 17px; font-weight: 800; color: #1a1f2e; letter-spacing: .2px; }
+.c-ltp {
+    font-size: 11px; font-family: 'Courier New', monospace;
+    background: #ffffff; color: #5a6478;
+    padding: 3px 9px; border-radius: 100px;
+    border: 1px solid #e4e8ef; margin-left: auto;
+    font-weight: 700;
+}
+.w-badge {
+    font-size: 9px; font-weight: 700; text-transform: uppercase;
+    padding: 2px 7px; border-radius: 100px;
+    background: #fffde7; color: #e65100; border: 1px solid #ffe082;
+}
+.c-g3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+.c-g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.c-box { background: #ffffff; border-radius: 6px; padding: 8px 10px;
+         border: 1px solid #e4e8ef; }
+.c-lbl { display: block; font-size: 7.5px; font-weight: 700; letter-spacing: .7px;
+         text-transform: uppercase; color: #9aa0ad; margin-bottom: 3px; }
+.c-num { display: block; font-family: 'Courier New', monospace;
+         font-size: 13px; font-weight: 700; color: #1a1f2e; word-break: break-all; }
+.c-num.sell { color: #c62828; font-size: 22px; }
+.c-num.buy  { color: #2e7d32; font-size: 22px; }
+.c-num.sm   { font-size: 11.5px; }
+.c-chg { font-size: 10px; color: #9aa0ad; margin-top: 8px;
+         font-family: 'Courier New', monospace; }
+
+/* ── BRIDGE ── */
+.bridge {
+    background: #fffde7; border: 1.5px solid #ffe082;
+    border-radius: 8px; padding: 12px 14px; margin: 6px 10px;
+}
+.b-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 5px 0; border-bottom: 1px solid rgba(0,0,0,.06);
+    font-size: 12px; color: #5a6478;
+}
+.b-row:last-child { border-bottom: none; }
+.b-val { font-family: 'Courier New', monospace; font-weight: 700; font-size: 12px; }
+.b-val.g { color: #2e7d32; } .b-val.r { color: #c62828; }
+.b-row.total { color: #e65100; font-weight: 800; font-size: 14px; padding-top: 8px; }
+.b-row.total .b-val { color: #e65100; font-size: 15px; }
+
+/* ── LEFTOVER ── */
+.leftover {
+    background: #e8f5e9; border: 1.5px solid #a5d6a7;
+    border-radius: 8px; padding: 12px 14px;
+    display: flex; justify-content: space-between; align-items: center;
+    margin: 6px 10px;
+}
+.leftover .ll { font-size: 12px; color: #5a6478; }
+.leftover .lv { font-family: 'Courier New', monospace; font-size: 17px;
+                font-weight: 800; color: #2e7d32; }
+
+/* ── UPLOAD SCREEN ── */
+.step-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: #e8eaf6; border: 1px solid #9fa8da;
+    border-radius: 100px; padding: 4px 12px;
+    font-size: 12px; color: #3949ab; font-weight: 600;
+    margin-bottom: 10px;
+}
+.upload-hdr {
+    background: linear-gradient(135deg, #1a237e, #283593);
+    color: #fff; padding: 14px 16px 12px;
+    font-size: 15px; font-weight: 700;
+    display: flex; align-items: center; gap: 8px;
+}
+.info-card {
+    background: #e3f2fd; border: 1px solid #90caf9;
+    border-radius: 8px; padding: 9px 12px;
+    font-size: 12px; color: #1565c0; line-height: 1.7;
+    margin-bottom: 6px;
+}
+.info-card b { color: #0d47a1; }
+.info-card a { color: #1565c0; }
+.loaded-ok {
+    background: #e8f5e9; border: 1px solid #a5d6a7;
+    border-radius: 6px; padding: 6px 10px;
+    font-size: 12px; color: #2e7d32; font-weight: 600;
+    margin: 4px 0;
+}
+.sym-row-s { font-family: monospace; font-size: 12px;
+             color: #c62828; margin: 2px 0; font-weight: 600; }
+.sym-row-b { font-family: monospace; font-size: 12px;
+             color: #2e7d32; margin: 2px 0; font-weight: 600; }
+
+/* ── SEC TITLES ── */
+.sec-title-sell {
+    font-size: 13px; font-weight: 800; text-transform: uppercase;
+    letter-spacing: .5px; color: #c62828;
+    padding: 8px 12px 6px;
+    border-bottom: 2px solid #ef9a9a;
+    background: #ffebee;
+    display: flex; align-items: center; gap: 8px;
+}
+.sec-title-buy {
+    font-size: 13px; font-weight: 800; text-transform: uppercase;
+    letter-spacing: .5px; color: #2e7d32;
+    padding: 8px 12px 6px;
+    border-bottom: 2px solid #a5d6a7;
+    background: #e8f5e9;
+    display: flex; align-items: center; gap: 8px;
+}
+.badge-count {
+    background: #c62828; color: #fff;
+    border-radius: 10px; padding: 1px 7px;
+    font-size: 10px;
+}
+.badge-buy { background: #2e7d32; }
+.per-note { font-size: 12px; color: #5a6478; padding: 4px 12px 8px; }
+.per-note b { color: #2e7d32; font-family: 'Courier New', monospace; }
+
+/* ── FOOTER ── */
+.ftxt {
+    text-align: center; font-size: 10px; color: #9aa0ad;
+    margin: 16px 10px 8px; line-height: 1.9;
+}
+.divider { height: 1px; background: #e4e8ef; margin: 8px 10px; }
+
+/* ── Ctrl buttons bar ── */
+.ctrl-bar {
+    display: flex; gap: 6px; padding: 6px 10px;
+    background: #f8f9fb; border-top: 1px solid #e4e8ef;
+    position: sticky; top: 52px; z-index: 90;
+}
+
+/* ── Mobile ── */
+@media (max-width: 480px) {
+    .c-g3 { grid-template-columns: 1fr 1fr; }
+    .c-num.sell, .c-num.buy { font-size: 18px; }
+    .sum-val { font-size: 11px; }
+}
+</style>""", unsafe_allow_html=True)
+
 # ── Session state ─────────────────────────────────────────────────────────────
 for _k, _v in {
-    "stage": "pin", "sell_syms": [], "buy_syms": [], "data": None,
-    "pin_attempts": 0, "auto_refresh": True,
+    "stage": "pin", "sell_syms": [], "buy_syms": [],
+    "data": None, "pin_attempts": 0, "auto_refresh": True,
 }.items():
     if _k not in st.session_state:
         st.session_state[_k] = _v
-
-# ── Shared card CSS ───────────────────────────────────────────────────────────
-st.markdown("""<style>
-.logo      { font-family:'Syne',sans-serif; font-size:26px; font-weight:800; color:#dce8f5; padding:1.4rem 0 .2rem; }
-.logo span { color:#ffc94d; }
-.sub       { font-size:13px; color:#5a6a82; margin-bottom:1.8rem; line-height:1.6; }
-.step-pill { display:inline-flex; align-items:center; gap:6px; background:rgba(83,74,183,.18);
-             border:1px solid rgba(83,74,183,.3); border-radius:100px;
-             padding:4px 12px; font-size:12px; color:#AFA9EC; margin-bottom:1rem; }
-.pin-wrap  { text-align:center; padding:.5rem 0; }
-.strip     { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-bottom:4px; }
-.s-pill    { background:#0e1420; border:1px solid rgba(255,255,255,.07); border-radius:12px; padding:10px 8px; text-align:center; }
-.s-pill.inv{ border-color:rgba(0,214,143,.3); } .s-pill.buf{ border-color:rgba(255,68,88,.25); }
-.s-lbl     { display:block; font-size:8px; font-weight:700; letter-spacing:.7px; text-transform:uppercase; color:#5a6a82; margin-bottom:4px; }
-.s-val     { display:block; font-family:'IBM Plex Mono',monospace; font-size:12px; font-weight:600; }
-.s-val.g{ color:#00d68f; } .s-val.r{ color:#ff4458; } .s-val.y{ color:#ffc94d; }
-.ts        { font-size:10px; color:#5a6a82; margin-bottom:10px; }
-.sec-title { font-family:'Syne',sans-serif; font-size:21px; font-weight:800; margin:18px 0 10px; }
-.sec-title.sell{ color:#ff4458; } .sec-title.buy{ color:#00d68f; }
-.per-note  { font-size:12px; color:#8fa3bc; margin:-4px 0 12px; }
-.per-note b{ color:#00d68f; font-family:'IBM Plex Mono',monospace; }
-.card      { background:#0e1420; border-radius:14px; padding:14px; margin-bottom:10px; }
-.card-sell { border:1px solid rgba(255,68,88,.25); } .card-buy{ border:1px solid rgba(0,214,143,.2); }
-.card.dim  { opacity:.45; }
-.c-top     { display:flex; align-items:center; flex-wrap:wrap; justify-content:space-between; gap:6px; margin-bottom:11px; }
-.c-sym     { font-family:'Syne',sans-serif; font-size:19px; font-weight:800; color:#dce8f5; }
-.c-ltp     { font-family:'IBM Plex Mono',monospace; font-size:11px; color:#8fa3bc;
-             background:#141b28; padding:3px 9px; border-radius:100px;
-             border:1px solid rgba(255,255,255,.07); margin-left:auto; }
-.w-badge   { font-size:9px; font-weight:700; text-transform:uppercase; padding:2px 7px;
-             border-radius:100px; background:rgba(255,201,77,.15); color:#ffc94d; }
-.c-g3{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; }
-.c-g2{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
-.c-box     { background:#141b28; border-radius:9px; padding:9px 10px; }
-.c-lbl     { display:block; font-size:7.5px; font-weight:700; letter-spacing:.7px; text-transform:uppercase; color:#5a6a82; margin-bottom:4px; }
-.c-num     { display:block; font-family:'IBM Plex Mono',monospace; font-size:14px; font-weight:600; color:#dce8f5; word-break:break-all; }
-.c-num.sell{ color:#ff4458; font-size:22px; } .c-num.buy{ color:#00d68f; font-size:22px; } .c-num.sm{ font-size:11px; }
-.c-chg     { font-size:10px; color:#5a6a82; margin-top:9px; font-family:'IBM Plex Mono',monospace; }
-.bridge    { background:rgba(255,201,77,.07); border:1px solid rgba(255,201,77,.2); border-radius:14px; padding:14px; margin:6px 0 2px; }
-.b-row     { display:flex; justify-content:space-between; align-items:center; padding:6px 0;
-             border-bottom:1px solid rgba(255,255,255,.05); font-size:12px; color:#8fa3bc; }
-.b-row:last-child{ border-bottom:none; }
-.b-val     { font-family:'IBM Plex Mono',monospace; font-weight:600; font-size:12px; }
-.b-val.g{ color:#00d68f; } .b-val.r{ color:#ff4458; }
-.b-row.total{ color:#ffc94d; font-weight:700; font-size:14px; }
-.b-row.total .b-val{ color:#ffc94d; font-size:15px; }
-.leftover  { background:#0e1420; border:1px solid rgba(255,255,255,.07); border-radius:14px;
-             padding:13px 16px; display:flex; justify-content:space-between; align-items:center; margin-top:10px; }
-.leftover .ll{ font-size:12px; color:#8fa3bc; }
-.leftover .lv{ font-family:'IBM Plex Mono',monospace; font-size:17px; font-weight:600; color:#ffc94d; }
-.ftxt      { text-align:center; font-size:10px; color:#5a6a82; margin-top:1.5rem; line-height:1.9; }
-.divider   { height:1px; background:rgba(255,255,255,.06); margin:12px 0; }
-.info-box  { background:#0e1420; border:1px solid rgba(83,74,183,.3); border-radius:12px;
-             padding:10px 14px; font-size:12px; color:#8fa3bc; line-height:1.7; margin-bottom:6px; }
-.info-box b{ color:#AFA9EC; }
-</style>""", unsafe_allow_html=True)
-
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -178,17 +436,8 @@ def inr(n: float, decimals: int = 0) -> str:
 
 
 def get_ltp_yfinance(symbols: list) -> dict:
-    """
-    NSE symbols → LTP via yfinance.
-    Strategy:
-      1. Batch download period=5d, interval=1d  (most reliable for NSE)
-      2. Individual .history() fallback for zeros
-      3. fast_info.last_price last resort
-    """
     ltp_map = {s: 0.0 for s in symbols}
-    tickers = [f"{s}.NS" for s in symbols]
-
-    # ── Step 1: Batch download ────────────────────────────────────────────────
+    tickers  = [f"{s}.NS" for s in symbols]
     try:
         data = yf.download(
             tickers, period="5d", interval="1d",
@@ -199,7 +448,6 @@ def get_ltp_yfinance(symbols: list) -> dict:
             for sym, ticker in zip(symbols, tickers):
                 try:
                     if isinstance(data.columns, pd.MultiIndex):
-                        # group_by="ticker" → (ticker, OHLCV)
                         series = data[ticker]["Close"].dropna()
                     else:
                         series = data["Close"].dropna()
@@ -209,8 +457,6 @@ def get_ltp_yfinance(symbols: list) -> dict:
                     pass
     except Exception:
         pass
-
-    # ── Step 2: Individual .history() for zeros ───────────────────────────────
     missing = [s for s in symbols if ltp_map[s] == 0.0]
     for sym in missing:
         try:
@@ -219,10 +465,8 @@ def get_ltp_yfinance(symbols: list) -> dict:
                 ltp_map[sym] = round(float(hist["Close"].dropna().iloc[-1]), 2)
         except Exception:
             pass
-
-    # ── Step 3: fast_info last resort ─────────────────────────────────────────
-    still_missing = [s for s in symbols if ltp_map[s] == 0.0]
-    for sym in still_missing:
+    still = [s for s in symbols if ltp_map[s] == 0.0]
+    for sym in still:
         try:
             info = yf.Ticker(f"{sym}.NS").fast_info
             val  = getattr(info, "last_price", None) or getattr(info, "previous_close", None)
@@ -230,19 +474,12 @@ def get_ltp_yfinance(symbols: list) -> dict:
                 ltp_map[sym] = round(float(val), 2)
         except Exception:
             pass
-
     return ltp_map
 
 
 def parse_holdings_file(file) -> dict:
-    """
-    Zerodha holdings file → {SYMBOL: qty}
-    Supports CSV aur XLSX dono.
-    XLSX: 'Equity' sheet, header auto-detect, 'Quantity Available' column.
-    """
     fname = getattr(file, "name", "")
     ext   = fname.rsplit(".", 1)[-1].lower() if "." in fname else ""
-
     if ext in ("xlsx", "xls", "xlsm"):
         raw = pd.read_excel(file, sheet_name="Equity", header=None)
         header_row = None
@@ -264,10 +501,9 @@ def parse_holdings_file(file) -> dict:
         df = pd.read_csv(file)
         df.columns = df.columns.str.strip()
         sym_col = next((c for c in df.columns
-                        if c.lower() in ("instrument", "symbol", "tradingsymbol", "stock")), None)
+                        if c.lower() in ("instrument","symbol","tradingsymbol","stock")), None)
         qty_col = next((c for c in df.columns
                         if "qty" in c.lower() or "quantity" in c.lower()), None)
-
     if not sym_col or not qty_col:
         raise ValueError(
             f"Holdings file mein Symbol/Quantity columns nahi mile.\n"
@@ -285,10 +521,9 @@ def parse_holdings_file(file) -> dict:
     return hold_map
 
 
-def fetch_all(sell_syms: list, buy_syms: list, hold_map: dict, cash: float) -> dict:
+def fetch_all(sell_syms, buy_syms, hold_map, cash):
     all_syms = list(set(sell_syms + buy_syms))
     ltp_map  = get_ltp_yfinance(all_syms)
-
     sell_rows, gross_tot, charge_tot = [], 0.0, 0.0
     for sym in sell_syms:
         ltp   = ltp_map.get(sym, 0.0)
@@ -305,25 +540,24 @@ def fetch_all(sell_syms: list, buy_syms: list, hold_map: dict, cash: float) -> d
         sell_rows.append({"sym": sym, "ltp": ltp, "qty": qty, "gross": gross,
                           "stt": stt, "exc": exc, "brk": brk, "gst": gst,
                           "total_charges": tc, "net": net, "held": qty > 0})
-
     sell_net = gross_tot - charge_tot
     pool     = sell_net + cash
     buf      = pool * BUF_PCT
     invest   = pool - buf
     n_buy    = len(buy_syms)
     per_stk  = invest / n_buy if n_buy > 0 else 0.0
-
     buy_rows, buy_cost = [], 0.0
     for sym in buy_syms:
         ltp       = ltp_map.get(sym, 0.0)
         qty       = math.floor(per_stk / ltp) if ltp > 0 else 0
         cost      = qty * ltp
-        charges_b = cost * EXC_CH + cost * STAMP_BUY + min(20, cost * 0.0003) * (1 + GST_RATE)
+        charges_b = (cost * EXC_CH + cost * STAMP_BUY +
+                     min(20, cost * 0.0003) * (1 + GST_RATE))
         buy_cost += cost + charges_b
-        buy_rows.append({"sym": sym, "ltp": ltp, "qty": qty, "cost": cost, "charges": charges_b})
-
+        buy_rows.append({"sym": sym, "ltp": ltp, "qty": qty,
+                         "cost": cost, "charges": charges_b})
     return {
-        "ts": datetime.now().strftime("%d %b %Y, %I:%M:%S %p"),
+        "ts": datetime.now().strftime("%d %b %Y, %I:%M %p"),
         "sell_rows": sell_rows, "buy_rows": buy_rows,
         "gross_tot": round(gross_tot, 2), "charge_tot": round(charge_tot, 2),
         "sell_net": round(sell_net, 2), "cash": round(cash, 2),
@@ -339,12 +573,17 @@ def sell_card(r):
     dim  = " dim" if not r["held"] else ""
     warn = '<span class="w-badge">Holdings mein nahi</span>' if not r["held"] else ""
     return f"""<div class="card card-sell{dim}">
-  <div class="c-top"><span class="c-sym">{r['sym']}</span>{warn}
-    <span class="c-ltp">₹{r['ltp']:,.2f}</span></div>
+  <div class="c-top">
+    <span class="c-sym">{r['sym']}</span>{warn}
+    <span class="c-ltp">₹{r['ltp']:,.2f}</span>
+  </div>
   <div class="c-g3">
-    <div class="c-box"><span class="c-lbl">SELL QTY</span><span class="c-num sell">{r['qty']}</span></div>
-    <div class="c-box"><span class="c-lbl">GROSS</span><span class="c-num sm">{inr(r['gross'])}</span></div>
-    <div class="c-box"><span class="c-lbl">NET (after charges)</span><span class="c-num sm">{inr(r['net'])}</span></div>
+    <div class="c-box"><span class="c-lbl">Sell Qty</span>
+      <span class="c-num sell">{r['qty']}</span></div>
+    <div class="c-box"><span class="c-lbl">Gross Value</span>
+      <span class="c-num sm">{inr(r['gross'])}</span></div>
+    <div class="c-box"><span class="c-lbl">Net (after charges)</span>
+      <span class="c-num sm">{inr(r['net'])}</span></div>
   </div>
   <div class="c-chg">STT {inr(r['stt'],2)} · Exchange {inr(r['exc'],2)} · Brokerage+GST {inr(r['brk']+r['gst'],2)}</div>
 </div>"""
@@ -352,11 +591,15 @@ def sell_card(r):
 
 def buy_card(r):
     return f"""<div class="card card-buy">
-  <div class="c-top"><span class="c-sym">{r['sym']}</span>
-    <span class="c-ltp">₹{r['ltp']:,.2f}</span></div>
+  <div class="c-top">
+    <span class="c-sym">{r['sym']}</span>
+    <span class="c-ltp">₹{r['ltp']:,.2f}</span>
+  </div>
   <div class="c-g2">
-    <div class="c-box"><span class="c-lbl">BUY QTY</span><span class="c-num buy">{r['qty']}</span></div>
-    <div class="c-box"><span class="c-lbl">TOTAL COST (w/ charges)</span><span class="c-num sm">{inr(r['cost']+r['charges'])}</span></div>
+    <div class="c-box"><span class="c-lbl">Buy Qty</span>
+      <span class="c-num buy">{r['qty']}</span></div>
+    <div class="c-box"><span class="c-lbl">Total Cost (w/ charges)</span>
+      <span class="c-num sm">{inr(r['cost']+r['charges'])}</span></div>
   </div>
   <div class="c-chg">Base: {inr(r['cost'])} · Charges: {inr(r['charges'],2)}</div>
 </div>"""
@@ -364,124 +607,87 @@ def buy_card(r):
 
 def bridge_html(d):
     return f"""<div class="bridge">
-  <div class="b-row"><span>Sell net proceeds</span><span class="b-val g">{inr(d['sell_net'])}</span></div>
-  <div class="b-row"><span>+ Available cash</span><span class="b-val g">{inr(d['cash'])}</span></div>
-  <div class="b-row"><span>− Buffer 0.6% (charges)</span><span class="b-val r">−{inr(d['buf'])}</span></div>
-  <div class="b-row total"><span>= Investable fund</span><span class="b-val">{inr(d['invest'])}</span></div>
+  <div class="b-row"><span>Sell net proceeds</span>
+    <span class="b-val g">{inr(d['sell_net'])}</span></div>
+  <div class="b-row"><span>+ Available cash / margin</span>
+    <span class="b-val g">{inr(d['cash'])}</span></div>
+  <div class="b-row"><span>− Buffer 0.6% (charges cover)</span>
+    <span class="b-val r">−{inr(d['buf'])}</span></div>
+  <div class="b-row total"><span>= Investable Fund</span>
+    <span class="b-val">{inr(d['invest'])}</span></div>
 </div>"""
 
 
 # ╔══════════════════════════════════════════════════════════════════════════════╗
-# ║  STAGE: PIN                                                                 ║
+# ║  STAGE: PIN  — navy gradient overlay, yellow button (exact match)          ║
 # ╚══════════════════════════════════════════════════════════════════════════════╝
 def stage_pin():
+    # Full-screen navy gradient overlay via HTML
+    used = st.session_state.pin_attempts
+    dots = "".join(
+        f'<span class="att-dot{"  used" if i < used else ""}"></span>'
+        for i in range(5)
+    )
+
+    st.markdown(f"""
+    <div class="pin-overlay">
+      <div class="pin-box">
+        <div class="pin-logo">⚖️</div>
+        <div class="pin-title">Portfolio Rebalancer</div>
+        <div class="pin-subtitle">Enter your 6-digit PIN to continue</div>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Overlay with real Streamlit input layered on top
     st.markdown("""
     <style>
-    /* PIN screen — full viewport centering */
-    .pin-outer {
-        min-height: 88vh;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        padding: 2rem 0 1rem;
+    /* Pull the Streamlit content into the overlay zone */
+    .main .block-container {
+        position: fixed !important;
+        top: 50% !important;
+        left: 50% !important;
+        transform: translate(-50%, -50%) !important;
+        width: min(340px, 92vw) !important;
+        max-width: 340px !important;
+        padding: 0 !important;
+        z-index: 9999 !important;
+        background: transparent !important;
     }
-
-    /* Glowing icon badge */
-    .pin-icon {
-        width: 72px; height: 72px;
-        background: linear-gradient(135deg, #534AB7 0%, #7F77DD 100%);
-        border-radius: 22px;
-        display: flex; align-items: center; justify-content: center;
-        font-size: 32px;
-        margin-bottom: 1.4rem;
-        box-shadow: 0 0 0 8px rgba(83,74,183,.12), 0 0 0 16px rgba(83,74,183,.06);
-    }
-
-    /* Wordmark */
-    .pin-title {
-        font-family: 'Syne', sans-serif;
-        font-size: 30px; font-weight: 800;
-        color: #dce8f5;
-        letter-spacing: -0.5px;
-        margin-bottom: 4px;
-        text-align: center;
-    }
-    .pin-title span { color: #ffc94d; }
-
-    .pin-tagline {
-        font-size: 13px; color: #4a5a72;
-        text-align: center;
-        margin-bottom: 2.4rem;
-        letter-spacing: 0.3px;
-    }
-
-    /* Input card */
-    .pin-card {
-        background: #0d1320;
-        border: 1px solid rgba(255,255,255,.07);
-        border-radius: 22px;
-        padding: 28px 28px 24px;
-        width: 100%;
-        max-width: 340px;
-        box-shadow: 0 24px 60px rgba(0,0,0,.45);
-    }
-
-    .pin-label {
-        font-size: 11px; font-weight: 700; letter-spacing: 1.2px;
-        text-transform: uppercase; color: #4a5a72;
-        text-align: center;
-        margin-bottom: 14px;
-    }
-
-    /* Attempts badge */
-    .att-row {
-        display: flex; justify-content: center; gap: 6px;
-        margin-top: 14px;
-    }
-    .att-dot {
-        width: 7px; height: 7px; border-radius: 50%;
-        background: rgba(255,255,255,.1);
-    }
-    .att-dot.used { background: #ff4458; }
-
-    /* Divider line */
-    .pin-divider {
-        height: 1px;
-        background: linear-gradient(90deg, transparent, rgba(83,74,183,.3), transparent);
-        margin: 20px 0 16px;
-    }
-
-    /* Footer */
-    .pin-footer {
-        font-size: 10px; color: #2a3a52;
-        text-align: center;
-        margin-top: 1.6rem;
-        letter-spacing: 0.3px;
-    }
+    [data-testid="stVerticalBlock"] { gap: 0 !important; }
+    div[data-testid="stAlert"] { display: none !important; }
     </style>
-
-    <div class="pin-outer">
-      <div class="pin-icon">📊</div>
-      <div class="pin-title">Re<span>balance</span></div>
-      <div class="pin-tagline">Zerodha · Personal Portfolio Rebalancer</div>
-
-      <div class="pin-card">
-        <div class="pin-label">Enter your PIN</div>
     """, unsafe_allow_html=True)
 
     if st.session_state.pin_attempts >= 5:
-        st.error("Bahut zyada galat attempts. Page reload karo.")
-        st.markdown("</div></div>", unsafe_allow_html=True)
+        st.markdown("""
+        <div style="background:rgba(255,107,107,.15);border:1.5px solid #ff6b6b;
+             border-radius:10px;padding:12px;text-align:center;color:#ff6b6b;font-weight:700">
+          🔒 Bahut zyada galat attempts.<br>Page reload karo.
+        </div>""", unsafe_allow_html=True)
         return
 
+    # PIN input box
+    st.markdown(
+        '<div class="pin-input-wrap" style="margin-bottom:8px;">',
+        unsafe_allow_html=True
+    )
     pin = st.text_input(
-        "pin", placeholder="· · · · · ·", max_chars=6,
-        type="password", label_visibility="collapsed",
-        key="pin_input"
+        "pin", placeholder="——————", max_chars=6,
+        type="password", label_visibility="collapsed", key="pin_field"
+    )
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    # Hint
+    st.markdown(
+        '<p style="color:rgba(255,255,255,.35);font-size:11px;text-align:center;'
+        'margin:0 0 12px;">Type on keyboard or use phone keypad</p>',
+        unsafe_allow_html=True
     )
 
-    if st.button("Unlock  →", use_container_width=True):
+    # Yellow unlock button
+    st.markdown('<div class="pin-btn-wrap">', unsafe_allow_html=True)
+    if st.button("Unlock →", use_container_width=True, key="pin_submit"):
         if pin == APP_PIN:
             st.session_state.stage = "upload"
             st.session_state.pin_attempts = 0
@@ -489,27 +695,19 @@ def stage_pin():
         else:
             st.session_state.pin_attempts += 1
             remaining = 5 - st.session_state.pin_attempts
-            if remaining > 0:
-                st.error(f"Galat PIN — {remaining} attempts baaki")
-            else:
-                st.error("Bahut zyada galat attempts. Page reload karo.")
+            st.session_state["_pin_err"] = (
+                f"❌ Galat PIN — {remaining} attempts baaki" if remaining > 0
+                else "🔒 Locked — page reload karo"
+            )
+            st.rerun()
+    st.markdown("</div>", unsafe_allow_html=True)
 
-    # Attempt dots
-    used = st.session_state.pin_attempts
-    dots_html = "".join(
-        f'<div class="att-dot{"  used" if i < used else ""}"></div>'
-        for i in range(5)
-    )
+    # Error + dots
+    err = st.session_state.pop("_pin_err", "")
     st.markdown(f"""
-        <div class="att-row">{dots_html}</div>
-        <div class="pin-divider"></div>
-        <p style="font-size:11px;color:#2a3a52;text-align:center;margin:0">
-          Secured · Personal use only
-        </p>
-      </div>
-    </div>
-
-    <div class="pin-footer">prayan03.streamlit.app</div>
+    <div class="att-row">{dots}</div>
+    <div class="pin-error-box">{err}</div>
+    <div class="pin-footer">prayan03.streamlit.app · Personal use only</div>
     """, unsafe_allow_html=True)
 
 
@@ -517,78 +715,127 @@ def stage_pin():
 # ║  STAGE: UPLOAD                                                              ║
 # ╚══════════════════════════════════════════════════════════════════════════════╝
 def stage_upload():
+    # Header bar — matches rebalancer header
     st.markdown("""
-    <div class="logo">Re<span>balance</span></div>
-    <div class="step-pill">Data Upload</div>
+    <div class="rb-header">
+      <div class="rb-header-title">⚖️ Portfolio Rebalancer</div>
+      <div class="rb-header-right">
+        <span style="font-size:10.5px;background:rgba(255,202,40,.2);
+              border:1.5px solid #ffca28;color:#ffca28;border-radius:14px;
+              padding:3px 10px;font-weight:800;">📤 Data Upload</span>
+      </div>
+    </div>
     """, unsafe_allow_html=True)
 
     # ① Screener Excel
-    st.markdown('<div class="info-box"><b>① Screener Excel</b> — "Portfolio Rebalancing" sheet wala file</div>',
-                unsafe_allow_html=True)
-    screener_file = st.file_uploader("screener", type=["xlsx", "xls"],
-                                     label_visibility="collapsed", key="su_screener")
-
-    # ② Holdings CSV
-    st.markdown("""<div class="info-box" style="margin-top:8px">
-      <b>② Zerodha Holdings File</b> —
-      <a href="https://console.zerodha.com/portfolio/holdings" target="_blank"
-         style="color:#AFA9EC">console.zerodha.com</a>
-      → Holdings → ⬇ Download (CSV ya XLSX dono chalega)
+    st.markdown("""
+    <div style="padding:10px 12px 4px;">
+      <div class="info-card">
+        <b>① Screener Excel</b> — "Portfolio Rebalancing" sheet wala file upload karo
+      </div>
     </div>""", unsafe_allow_html=True)
-    holdings_file = st.file_uploader("holdings", type=["csv", "xlsx", "xls"],
-                                     label_visibility="collapsed", key="su_holdings")
+    screener_file = st.file_uploader(
+        "screener", type=["xlsx","xls"],
+        label_visibility="collapsed", key="su_screener"
+    )
+
+    # ② Holdings
+    st.markdown("""
+    <div style="padding:4px 12px;">
+      <div class="info-card">
+        <b>② Zerodha Holdings</b> —
+        <a href="https://console.zerodha.com/portfolio/holdings"
+           target="_blank">console.zerodha.com</a>
+        → Holdings → ⬇ Download (XLSX ya CSV dono chalega)
+      </div>
+    </div>""", unsafe_allow_html=True)
+    holdings_file = st.file_uploader(
+        "holdings", type=["csv","xlsx","xls"],
+        label_visibility="collapsed", key="su_holdings"
+    )
 
     # ③ Cash
-    st.markdown('<div class="info-box" style="margin-top:8px"><b>③ Available Cash (₹)</b> — Zerodha Funds mein jo "Available margin" dikhaye</div>',
-                unsafe_allow_html=True)
-    cash_val = st.number_input("cash", min_value=0.0, value=0.0, step=1000.0,
-                               format="%.0f", label_visibility="collapsed")
+    st.markdown("""
+    <div style="padding:4px 12px;">
+      <div class="info-card">
+        <b>③ Available Cash ₹</b> — Zerodha Funds → "Available margin" wali value
+      </div>
+    </div>""", unsafe_allow_html=True)
+
+    # Number input styled inline
+    st.markdown("""
+    <div style="padding:0 12px 4px;display:flex;align-items:center;
+         gap:10px;background:#fff;border-top:1px solid #e4e8ef;
+         border-bottom:1px solid #e4e8ef;padding:8px 12px;">
+      <span style="font-size:12px;font-weight:600;color:#5a6478;flex:1;">
+        💰 Available Cash (₹)</span>
+    </div>""", unsafe_allow_html=True)
+    cash_val = st.number_input(
+        "cash", min_value=0.0, value=0.0, step=1000.0,
+        format="%.0f", label_visibility="collapsed"
+    )
 
     sells, buys, hold_map = [], [], {}
 
     if screener_file:
         try:
-            df = pd.read_excel(screener_file, sheet_name="Portfolio Rebalancing", header=0)
-            sc = next((c for c in df.columns if "sell" in c.lower()), None)
-            bc = next((c for c in df.columns if "buy"  in c.lower()), None)
+            df       = pd.read_excel(screener_file,
+                                     sheet_name="Portfolio Rebalancing", header=0)
+            sc       = next((c for c in df.columns if "sell" in c.lower()), None)
+            bc       = next((c for c in df.columns if "buy"  in c.lower()), None)
             if not sc or not bc:
                 st.error("Screener Excel mein 'Sell' ya 'Buy' column nahi mili.")
             else:
                 sells = [s.strip() for s in df[sc].dropna().tolist()
-                         if str(s).strip().upper() not in ("SELL STOCKS", "")]
+                         if str(s).strip().upper() not in ("SELL STOCKS","")]
                 buys  = [b.strip() for b in df[bc].dropna().tolist()
-                         if str(b).strip().upper() not in ("BUY STOCKS", "")]
+                         if str(b).strip().upper() not in ("BUY STOCKS","")]
+
+                # Preview panel
+                st.markdown("""<div class="panel" style="margin-top:8px;">
+                  <div class="panel-hdr ph-navy">📋 Stock Preview</div>
+                  <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;">""",
+                    unsafe_allow_html=True)
+
                 col1, col2 = st.columns(2)
                 with col1:
-                    st.markdown(f"<p style='color:#ff4458;font-weight:700;margin:8px 0 4px'>SELL · {len(sells)}</p>",
-                                unsafe_allow_html=True)
+                    st.markdown(
+                        f'<div class="sec-title-sell">🔴 SELL '
+                        f'<span class="badge-count">{len(sells)}</span></div>',
+                        unsafe_allow_html=True)
                     for s in sells:
-                        st.markdown(f"<p style='font-family:monospace;font-size:12px;margin:2px 0;color:#dce8f5'>{s}</p>",
+                        st.markdown(f'<div class="sym-row-s">▸ {s}</div>',
                                     unsafe_allow_html=True)
                 with col2:
-                    st.markdown(f"<p style='color:#00d68f;font-weight:700;margin:8px 0 4px'>BUY · {len(buys)}</p>",
-                                unsafe_allow_html=True)
+                    st.markdown(
+                        f'<div class="sec-title-buy">🟢 BUY '
+                        f'<span class="badge-count badge-buy">{len(buys)}</span></div>',
+                        unsafe_allow_html=True)
                     for b in buys:
-                        st.markdown(f"<p style='font-family:monospace;font-size:12px;margin:2px 0;color:#dce8f5'>{b}</p>",
+                        st.markdown(f'<div class="sym-row-b">▸ {b}</div>',
                                     unsafe_allow_html=True)
+                st.markdown("</div></div>", unsafe_allow_html=True)
         except Exception as e:
             st.error(f"Screener Excel error: {e}")
 
     if holdings_file:
         try:
             hold_map = parse_holdings_file(holdings_file)
-            st.markdown(f"<p style='color:#00d68f;font-size:12px;margin:6px 0'>✓ Holdings loaded — {len(hold_map)} stocks</p>",
-                        unsafe_allow_html=True)
+            st.markdown(
+                f'<div class="loaded-ok" style="margin:4px 12px;">✅ '
+                f'Holdings loaded — <b>{len(hold_map)} stocks</b></div>',
+                unsafe_allow_html=True)
         except Exception as e:
-            st.error(f"Holdings CSV error: {e}")
+            st.error(f"Holdings file error: {e}")
 
-    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
     if (sells or buys) and hold_map:
-        if st.button("Dashboard Load Karo →"):
+        if st.button("⚖️  Rebalance Dashboard Load Karo →",
+                     use_container_width=True):
             st.session_state.sell_syms = sells
             st.session_state.buy_syms  = buys
-            with st.spinner("yfinance se live prices aa rahe hain… (30-60 sec)"):
+            with st.spinner("⏳ yfinance se live LTP aa raha hai… (30-60 sec lag sakta hai)"):
                 try:
                     d = fetch_all(sells, buys, hold_map, float(cash_val))
                     st.session_state.data  = d
@@ -597,12 +844,14 @@ def stage_upload():
                 except Exception as exc:
                     st.error(f"Data fetch failed: {exc}")
     else:
-        st.markdown("<p style='color:#5a6a82;font-size:12px;text-align:center'>"
-                    "Screener Excel aur Holdings CSV dono upload karo</p>",
-                    unsafe_allow_html=True)
+        st.markdown(
+            '<p style="color:#9aa0ad;font-size:12px;text-align:center;'
+            'padding:8px;">Screener Excel aur Holdings file dono upload karo</p>',
+            unsafe_allow_html=True)
 
     st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
-    if st.button("← Wapas (PIN screen)", type="secondary"):
+    if st.button("← Wapas (PIN screen)", type="secondary",
+                 use_container_width=True):
         st.session_state.stage = "pin"
         st.rerun()
 
@@ -617,52 +866,65 @@ def stage_dashboard():
         st.rerun()
         return
 
-    # ── Auto-refresh: har 60 sec pe prices update ─────────────────────────────
-    if _AUTOREFRESH_AVAILABLE and st.session_state.auto_refresh:
-        refresh_count = st_autorefresh(interval=60_000, key="price_autorefresh")
-        if refresh_count > 0:
+    ar_on = st.session_state.auto_refresh
+
+    # ── Auto-refresh ──────────────────────────────────────────────────────────
+    if _AUTOREFRESH_AVAILABLE and ar_on:
+        rc = st_autorefresh(interval=60_000, key="price_autorefresh")
+        if rc > 0:
             try:
                 hm = {r["sym"]: r["qty"] for r in d["sell_rows"]}
                 st.session_state.data = fetch_all(
                     st.session_state.sell_syms, st.session_state.buy_syms,
-                    hm, d["cash"]
-                )
+                    hm, d["cash"])
                 d = st.session_state.data
             except Exception:
-                pass  # silently fail, purana data dikhta rahe
+                pass
 
     ar_on    = st.session_state.auto_refresh
-    ar_label = "🟢 Auto-refresh ON" if ar_on else "⚪ Auto-refresh OFF"
+    ar_cls   = "on" if ar_on else "off"
+    ar_lbl   = "🟢 Auto-refresh ON" if ar_on else "⚪ Auto-refresh OFF"
     ar_icon  = "⏸ Pause" if ar_on else "▶ Resume"
 
+    # ── Sticky header ─────────────────────────────────────────────────────────
     st.markdown(f"""
-    <div style="padding:.8rem 0 .2rem">
-      <div class="logo" style="font-size:20px;padding:.4rem 0 .6rem">Re<span>balance</span></div>
-      <div class="strip">
-        <div class="s-pill inv"><span class="s-lbl">Investable</span><span class="s-val g">{inr(d['invest'])}</span></div>
-        <div class="s-pill buf"><span class="s-lbl">Buffer</span><span class="s-val r">−{inr(d['buf'])}</span></div>
-        <div class="s-pill"><span class="s-lbl">Leftover</span><span class="s-val y">{inr(d['leftover'])}</span></div>
+    <div class="rb-header">
+      <div class="rb-header-title">⚖️ Portfolio Rebalancer</div>
+      <div class="rb-header-right">
+        <span class="ts-badge">{d['ts']}</span>
+        <span class="ar-badge {ar_cls}">{ar_lbl}</span>
       </div>
-      <div class="ts" style="display:flex;align-items:center;gap:8px;margin-top:6px">
-        <span>Updated: {d['ts']}</span>
-        <span style="background:{'rgba(0,214,143,.12)' if ar_on else 'rgba(255,255,255,.06)'};
-              color:{'#00d68f' if ar_on else '#5a6a82'};
-              border:1px solid {'rgba(0,214,143,.3)' if ar_on else 'rgba(255,255,255,.08)'};
-              border-radius:100px;padding:2px 8px;font-size:10px;font-weight:700">
-          {ar_label}
-        </span>
-      </div>
-    </div>""", unsafe_allow_html=True)
+    </div>
+    """, unsafe_allow_html=True)
 
-    # ── Controls: manual refresh + pause/resume ───────────────────────────────
-    col_r, col_p = st.columns([1, 1])
+    # ── Summary strip ─────────────────────────────────────────────────────────
+    st.markdown(f"""
+    <div class="sum-strip">
+      <div class="sum-pill inv">
+        <span class="sum-lbl">Investable</span>
+        <span class="sum-val g">{inr(d['invest'])}</span>
+      </div>
+      <div class="sum-pill buf">
+        <span class="sum-lbl">Buffer (0.6%)</span>
+        <span class="sum-val r">−{inr(d['buf'])}</span>
+      </div>
+      <div class="sum-pill lft">
+        <span class="sum-lbl">Leftover</span>
+        <span class="sum-val y">{inr(d['leftover'])}</span>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ── Controls ──────────────────────────────────────────────────────────────
+    col_r, col_p = st.columns([3, 2])
     with col_r:
-        if st.button("⟳  Abhi Refresh Karo", use_container_width=True):
+        if st.button("🔄  Abhi Refresh Karo", use_container_width=True):
             with st.spinner("Prices aa rahe hain…"):
                 try:
                     hm = {r["sym"]: r["qty"] for r in d["sell_rows"]}
                     st.session_state.data = fetch_all(
-                        st.session_state.sell_syms, st.session_state.buy_syms, hm, d["cash"])
+                        st.session_state.sell_syms,
+                        st.session_state.buy_syms, hm, d["cash"])
                     st.rerun()
                 except Exception as exc:
                     st.error(f"Refresh failed: {exc}")
@@ -672,47 +934,77 @@ def stage_dashboard():
             st.rerun()
 
     # Zero LTP warning
-    zero_syms = [r["sym"] for r in d["sell_rows"] + d["buy_rows"] if r["ltp"] == 0.0]
+    zero_syms = [r["sym"] for r in d["sell_rows"] + d["buy_rows"]
+                 if r["ltp"] == 0.0]
     if zero_syms:
-        st.warning(f"⚠️ LTP nahi mila: **{', '.join(zero_syms)}** — market band ho ya symbol mismatch")
+        st.warning(
+            f"⚠️ LTP nahi mila: **{', '.join(zero_syms)}** "
+            f"— market band ho ya NSE symbol mismatch"
+        )
 
-    st.markdown(f'<div class="sec-title sell">SELL &nbsp;<span style="font-size:14px;color:#5a6a82">{len(d["sell_rows"])} stocks</span></div>',
-                unsafe_allow_html=True)
+    # ── SELL section ──────────────────────────────────────────────────────────
+    st.markdown(f"""
+    <div class="panel">
+      <div class="sec-title-sell">
+        🔴 Sell Stocks
+        <span class="badge-count">{len(d['sell_rows'])}</span>
+      </div>
+      <div style="padding:8px 10px 4px;">
+    """, unsafe_allow_html=True)
     for r in d["sell_rows"]:
         st.markdown(sell_card(r), unsafe_allow_html=True)
+    st.markdown("</div></div>", unsafe_allow_html=True)
 
+    # ── Fund bridge ───────────────────────────────────────────────────────────
     st.markdown(bridge_html(d), unsafe_allow_html=True)
 
-    st.markdown(f'<div class="sec-title buy">BUY &nbsp;<span style="font-size:14px;color:#5a6a82">{d["n_buy"]} stocks</span></div>',
-                unsafe_allow_html=True)
-    st.markdown(f'<div class="per-note">Equal split → <b>{inr(d["per_stk"])}</b> per stock</div>',
-                unsafe_allow_html=True)
+    # ── BUY section ───────────────────────────────────────────────────────────
+    st.markdown(f"""
+    <div class="panel">
+      <div class="sec-title-buy">
+        🟢 Buy Stocks
+        <span class="badge-count badge-buy">{d['n_buy']}</span>
+      </div>
+      <div class="per-note">
+        Equal split → <b>{inr(d['per_stk'])}</b> per stock
+      </div>
+      <div style="padding:0 10px 4px;">
+    """, unsafe_allow_html=True)
     for r in d["buy_rows"]:
         st.markdown(buy_card(r), unsafe_allow_html=True)
+    st.markdown("</div></div>", unsafe_allow_html=True)
 
-    st.markdown(f"""<div class="leftover">
-      <span class="ll">Remaining cash (after all buys + charges)</span>
+    # ── Leftover ──────────────────────────────────────────────────────────────
+    st.markdown(f"""
+    <div class="leftover">
+      <span class="ll">Remaining cash after all buys + charges</span>
       <span class="lv">{inr(d['leftover'])}</span>
-    </div>""", unsafe_allow_html=True)
+    </div>
+    """, unsafe_allow_html=True)
 
-    st.markdown("<br>", unsafe_allow_html=True)
+    # ── Action buttons ────────────────────────────────────────────────────────
+    st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("↑ Nayi Upload", type="secondary"):
+        if st.button("📤 Nayi Upload", type="secondary",
+                     use_container_width=True):
             st.session_state.stage = "upload"
             st.session_state.data  = None
             st.rerun()
     with col2:
-        if st.button("⏏ Reset", type="secondary"):
+        if st.button("🔒 Reset / Logout", type="secondary",
+                     use_container_width=True):
             for k in list(st.session_state.keys()):
                 del st.session_state[k]
             st.rerun()
 
-    st.markdown("""<div class="ftxt">
+    # ── Footer ────────────────────────────────────────────────────────────────
+    st.markdown("""
+    <div class="ftxt">
       Charges: STT 0.1% sell · Exchange ~0.03% · Brokerage ₹20/order + 18% GST<br>
-      Buy: Stamp duty 0.015% · Buffer 0.6% of pool · LTP source: yfinance (NSE)<br>
-      Estimates only — Kite pe verify karke order lagao.
-    </div>""", unsafe_allow_html=True)
+      Buy: Stamp duty 0.015% · Buffer 0.6% · LTP: yfinance (NSE) · Estimates only
+    </div>
+    """, unsafe_allow_html=True)
 
 
 # ── Router ────────────────────────────────────────────────────────────────────
