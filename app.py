@@ -47,7 +47,7 @@ TXN_NSE   = 0.0000307   # NSE 0.00307% transaction charge
 SEBI_CH   = 0.000001    # SEBI ₹10/crore = 0.0001%
 GST_RATE  = 0.18        # 18% on (TXN + SEBI), brokerage = ₹0
 STAMP_BUY = 0.00015     # 0.015% buy side only
-BUF_PCT   = 0.006
+BUF_FIXED = 500         # Fixed buffer above actual buy charges (₹500 safety)
 
 # ── Global CSS — matching rebalancer HTML app design system ───────────────────
 st.markdown("""
@@ -335,14 +335,8 @@ st.markdown("""<style>
 .c-num.sell { color: #c62828; font-size: 22px; }
 .c-num.buy  { color: #2e7d32; font-size: 22px; }
 .c-num.sm   { font-size: 11.5px; }
-.c-chg { font-size: 11.5px; color: #4a5568; margin-top: 8px;
-         font-family: 'Courier New', monospace;
-         background: rgba(0,0,0,0.05); border-radius: 5px;
-         padding: 5px 8px; font-weight: 600;
-         border-left: 3px solid #9aa0ad; }
-
-.card-sell .c-chg { border-left-color: #e57373; background: rgba(198,40,40,0.06); color: #5a3535; }
-.card-buy  .c-chg { border-left-color: #81c784; background: rgba(46,125,50,0.06); color: #2d4a2d; }
+.c-chg { font-size: 10px; color: #9aa0ad; margin-top: 8px;
+         font-family: 'Courier New', monospace; }
 
 /* ── BRIDGE ── */
 .bridge {
@@ -576,10 +570,27 @@ def fetch_all(sell_syms, buy_syms, hold_map, cash):
                           "total_charges": tc, "net": net, "held": qty > 0})
     sell_net = gross_tot - charge_tot
     pool     = sell_net + cash
-    buf      = pool * BUF_PCT
-    invest   = pool - buf
     n_buy    = len(buy_syms)
-    per_stk  = invest / n_buy if n_buy > 0 else 0.0
+
+    # ── Pass 1: estimate buy charges with buf=0 to find actual charges ──
+    buy_charges_est = 0.0
+    if n_buy > 0:
+        per_stk_est = pool / n_buy
+        for sym in buy_syms:
+            ltp_e = ltp_map.get(sym, 0.0)
+            qty_e = math.floor(per_stk_est / ltp_e) if ltp_e > 0 else 0
+            cost_e = qty_e * ltp_e
+            c_e = (cost_e * STT_RATE + cost_e * TXN_NSE +
+                   cost_e * SEBI_CH + cost_e * STAMP_BUY +
+                   (cost_e * TXN_NSE + cost_e * SEBI_CH) * GST_RATE)
+            buy_charges_est += c_e
+
+    # Buffer = actual estimated buy charges + ₹500 fixed safety
+    buf     = buy_charges_est + BUF_FIXED
+    invest  = pool - buf
+    per_stk = invest / n_buy if n_buy > 0 else 0.0
+
+    # ── Pass 2: final buy rows with corrected invest ──
     buy_rows, buy_cost = [], 0.0
     for sym in buy_syms:
         ltp       = ltp_map.get(sym, 0.0)
@@ -650,7 +661,7 @@ def bridge_html(d):
     <span class="b-val g">{inr(d['sell_net'])}</span></div>
   <div class="b-row"><span>+ Available cash / margin</span>
     <span class="b-val g">{inr(d['cash'])}</span></div>
-  <div class="b-row"><span>− Buffer 0.6% (charges cover)</span>
+  <div class="b-row"><span>− Buffer (buy charges + ₹500)</span>
     <span class="b-val r">−{inr(d['buf'])}</span></div>
   <div class="b-row total"><span>= Investable Fund</span>
     <span class="b-val">{inr(d['invest'])}</span></div>
@@ -1008,7 +1019,7 @@ def stage_dashboard():
         <span class="sum-val g">{inr(d['invest'])}</span>
       </div>
       <div class="sum-pill buf">
-        <span class="sum-lbl">Buffer (0.6%)</span>
+        <span class="sum-lbl">Buffer (+₹500)</span>
         <span class="sum-val r">−{inr(d['buf'])}</span>
       </div>
       <div class="sum-pill lft">
@@ -1105,7 +1116,7 @@ def stage_dashboard():
     st.markdown("""
     <div class="ftxt">
       Zerodha Delivery: Zero Brokerage · STT 0.1% B&amp;S · Txn 0.00307% · SEBI ₹10/cr · GST 18%<br>
-      Buy: Stamp 0.015% · Buffer 0.6% · LTP: yfinance (NSE) · Estimates only
+      Buy: Stamp 0.015% · Buffer = Buy charges + ₹500 · LTP: yfinance (NSE) · Estimates only
     </div>
     """, unsafe_allow_html=True)
 
