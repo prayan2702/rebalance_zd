@@ -622,71 +622,112 @@ def bridge_html(d):
 # ║  STAGE: PIN  — navy gradient overlay, yellow button (exact match)          ║
 # ╚══════════════════════════════════════════════════════════════════════════════╝
 def stage_pin():
-    # Full-screen navy gradient overlay via HTML
     used = st.session_state.pin_attempts
+    err  = st.session_state.pop("_pin_err", "")
     dots = "".join(
         f'<span class="att-dot{"  used" if i < used else ""}"></span>'
         for i in range(5)
     )
 
-    st.markdown(f"""
-    <div class="pin-overlay">
-      <div class="pin-box">
-        <div class="pin-logo">⚖️</div>
-        <div class="pin-title">Portfolio Rebalancer</div>
-        <div class="pin-subtitle">Enter your 6-digit PIN to continue</div>
-      </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    # Overlay with real Streamlit input layered on top
+    # Make entire page = navy gradient, center content
     st.markdown("""
     <style>
-    /* Pull the Streamlit content into the overlay zone */
-    .main .block-container {
-        position: fixed !important;
-        top: 50% !important;
-        left: 50% !important;
-        transform: translate(-50%, -50%) !important;
-        width: min(340px, 92vw) !important;
-        max-width: 340px !important;
-        padding: 0 !important;
-        z-index: 9999 !important;
-        background: transparent !important;
+    body,
+    .stApp,
+    [data-testid="stAppViewContainer"],
+    [data-testid="stMain"] {
+        background: linear-gradient(135deg,#0a0e2e 0%,#1a237e 55%,#1565c0 100%) !important;
+        min-height: 100vh !important;
     }
-    [data-testid="stVerticalBlock"] { gap: 0 !important; }
-    div[data-testid="stAlert"] { display: none !important; }
+    .main .block-container {
+        max-width: 340px !important;
+        margin: 0 auto !important;
+        padding: 0 16px 40px !important;
+        padding-top: max(80px, 15vh) !important;
+    }
+    [data-testid="stVerticalBlock"] { gap: 0.3rem !important; }
+
+    /* PIN text input override for dark bg */
+    div[data-testid="stTextInput"] input {
+        background: rgba(255,255,255,.08) !important;
+        border: 2px solid rgba(255,255,255,.2) !important;
+        border-radius: 14px !important;
+        color: #fff !important;
+        font-size: 28px !important;
+        font-family: 'Courier New', monospace !important;
+        font-weight: 800 !important;
+        text-align: center !important;
+        padding: 18px 20px !important;
+        letter-spacing: 14px !important;
+        caret-color: #ffca28;
+    }
+    div[data-testid="stTextInput"] input::placeholder {
+        letter-spacing: 8px; font-size: 18px;
+        color: rgba(255,255,255,.25);
+    }
+    div[data-testid="stTextInput"] input:focus {
+        border-color: #ffca28 !important;
+        background: rgba(255,202,40,.1) !important;
+        box-shadow: none !important;
+    }
+
+    /* Yellow unlock button */
+    div[data-testid="stButton"] button {
+        background: linear-gradient(135deg,#ffca28,#ffa000) !important;
+        color: #1a237e !important;
+        border: none !important;
+        border-radius: 12px !important;
+        font-size: 15px !important;
+        font-weight: 900 !important;
+        padding: 14px !important;
+        min-height: 52px !important;
+        box-shadow: 0 4px 20px rgba(255,202,40,.4);
+        letter-spacing: .3px;
+    }
+    div[data-testid="stButton"] button:hover {
+        transform: translateY(-2px) !important;
+        box-shadow: 0 6px 28px rgba(255,202,40,.55) !important;
+        opacity: 1 !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
     if st.session_state.pin_attempts >= 5:
         st.markdown("""
-        <div style="background:rgba(255,107,107,.15);border:1.5px solid #ff6b6b;
-             border-radius:10px;padding:12px;text-align:center;color:#ff6b6b;font-weight:700">
-          🔒 Bahut zyada galat attempts.<br>Page reload karo.
+        <div style="text-align:center;padding:20px 0">
+          <div style="background:rgba(255,107,107,.15);border:1.5px solid #ff6b6b;
+               border-radius:10px;padding:16px;color:#ff6b6b;font-weight:700;font-size:14px;">
+            🔒 Bahut zyada galat attempts.<br>Page reload karo.
+          </div>
         </div>""", unsafe_allow_html=True)
         return
 
-    # PIN input box
-    st.markdown(
-        '<div class="pin-input-wrap" style="margin-bottom:8px;">',
-        unsafe_allow_html=True
-    )
+    # Logo + title
+    st.markdown("""
+    <div style="text-align:center;margin-bottom:24px;">
+      <div style="font-size:52px;margin-bottom:10px;
+           filter:drop-shadow(0 4px 12px rgba(0,0,0,.4));">⚖️</div>
+      <div style="color:#fff;font-size:20px;font-weight:800;
+           letter-spacing:.3px;margin-bottom:4px;">Portfolio Rebalancer</div>
+      <div style="color:rgba(255,255,255,.5);font-size:12px;">
+           Enter your 6-digit PIN to continue</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # PIN input
     pin = st.text_input(
         "pin", placeholder="——————", max_chars=6,
         type="password", label_visibility="collapsed", key="pin_field"
     )
-    st.markdown("</div>", unsafe_allow_html=True)
 
-    # Hint
+    # Hint text
     st.markdown(
-        '<p style="color:rgba(255,255,255,.35);font-size:11px;text-align:center;'
-        'margin:0 0 12px;">Type on keyboard or use phone keypad</p>',
+        '<p style="color:rgba(255,255,255,.3);font-size:11px;'
+        'text-align:center;margin:4px 0 12px;">Type on keyboard or use phone keypad</p>',
         unsafe_allow_html=True
     )
 
-    # Yellow unlock button
-    st.markdown('<div class="pin-btn-wrap">', unsafe_allow_html=True)
+    # Unlock button
     if st.button("Unlock →", use_container_width=True, key="pin_submit"):
         if pin == APP_PIN:
             st.session_state.stage = "upload"
@@ -700,14 +741,16 @@ def stage_pin():
                 else "🔒 Locked — page reload karo"
             )
             st.rerun()
-    st.markdown("</div>", unsafe_allow_html=True)
 
-    # Error + dots
-    err = st.session_state.pop("_pin_err", "")
+    # Attempt dots + error
     st.markdown(f"""
-    <div class="att-row">{dots}</div>
-    <div class="pin-error-box">{err}</div>
-    <div class="pin-footer">prayan03.streamlit.app · Personal use only</div>
+    <div class="att-row" style="margin-top:12px;">{dots}</div>
+    <div style="color:#ff6b6b;font-size:12.5px;font-weight:700;
+         text-align:center;min-height:20px;margin-top:6px;">{err}</div>
+    <div style="color:rgba(255,255,255,.18);font-size:10px;
+         text-align:center;margin-top:28px;letter-spacing:.3px;">
+      prayan03.streamlit.app · Personal use only
+    </div>
     """, unsafe_allow_html=True)
 
 
