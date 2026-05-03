@@ -48,6 +48,9 @@ SEBI_CH   = 0.000001    # SEBI ₹10/crore = 0.0001%
 GST_RATE  = 0.18        # 18% on (TXN + SEBI), brokerage = ₹0
 STAMP_BUY = 0.00015     # 0.015% buy side only
 BUF_FIXED = 500         # Fixed buffer above actual buy charges (₹500 safety)
+# Effective charge rate on buy side (used to back-calculate max affordable qty)
+BUY_CHG_RATE = (STT_RATE + TXN_NSE + SEBI_CH + STAMP_BUY
+                + (TXN_NSE + SEBI_CH) * GST_RATE)  # ≈ 0.1187%
 
 # ── Global CSS — matching rebalancer HTML app design system ───────────────────
 st.markdown("""
@@ -578,7 +581,8 @@ def fetch_all(sell_syms, buy_syms, hold_map, cash):
         per_stk_est = pool / n_buy
         for sym in buy_syms:
             ltp_e = ltp_map.get(sym, 0.0)
-            qty_e = math.floor(per_stk_est / ltp_e) if ltp_e > 0 else 0
+            # Divide by (ltp × (1 + charge_rate)) so cost+charges fits in per_stk
+            qty_e = math.floor(per_stk_est / (ltp_e * (1 + BUY_CHG_RATE))) if ltp_e > 0 else 0
             cost_e = qty_e * ltp_e
             c_e = (cost_e * STT_RATE + cost_e * TXN_NSE +
                    cost_e * SEBI_CH + cost_e * STAMP_BUY +
@@ -590,11 +594,12 @@ def fetch_all(sell_syms, buy_syms, hold_map, cash):
     invest  = pool - buf
     per_stk = invest / n_buy if n_buy > 0 else 0.0
 
-    # ── Pass 2: final buy rows with corrected invest ──
+    # ── Pass 2: final buy rows — qty accounts for charges within per_stk ──
     buy_rows, buy_cost = [], 0.0
     for sym in buy_syms:
         ltp       = ltp_map.get(sym, 0.0)
-        qty       = math.floor(per_stk / ltp) if ltp > 0 else 0
+        # qty × ltp × (1 + charge_rate) ≤ per_stk  →  charges are within budget
+        qty       = math.floor(per_stk / (ltp * (1 + BUY_CHG_RATE))) if ltp > 0 else 0
         cost      = qty * ltp
         stt_b     = cost * STT_RATE              # 0.1% on buy
         txn_b     = cost * TXN_NSE               # NSE 0.00307%
